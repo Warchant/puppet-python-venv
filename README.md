@@ -1,6 +1,11 @@
 # python_venv
 
+[![codecov](https://codecov.io/gh/warchantua/puppet-python-venv/branch/main/graph/badge.svg)](https://codecov.io/gh/warchantua/puppet-python-venv)
+
 Manage Python virtual environments with deterministic dependency state in Puppet.
+
+> To activate this badge, enable Codecov for this repository. If the repo is private,
+> add `CODECOV_TOKEN` in repository secrets.
 
 This module provides the custom resource type `python_venv`, which:
 

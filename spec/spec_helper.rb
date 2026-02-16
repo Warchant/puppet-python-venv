@@ -1,5 +1,17 @@
 # frozen_string_literal: true
 
+require 'simplecov'
+require 'simplecov-cobertura'
+
+SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new([
+  SimpleCov::Formatter::HTMLFormatter,
+  SimpleCov::Formatter::CoberturaFormatter,
+])
+
+SimpleCov.start do
+  add_filter '/spec/'
+end
+
 RSpec.configure do |c|
   c.mock_with :rspec
 end
