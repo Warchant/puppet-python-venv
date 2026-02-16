@@ -52,14 +52,13 @@ jobs:
 
       - name: Run linters
         run: |
-          puppet-lint --no-autoloader_layout-check lib/
-          pdk validate --puppet-version=7 -a
+          make lint validate
 
       - name: Build module
         run: pdk build --force
 
       - name: Run tests
-        run: pdk test unit --puppet-version=7
+        run: make test
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

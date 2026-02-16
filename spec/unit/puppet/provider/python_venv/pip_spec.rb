@@ -152,7 +152,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       end
 
       it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(/Invalid venv detected at \/opt\/test-venv: python size=0, activate size=250/)
+        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=0, activate size=250})
         expect(provider.send(:venv_files_valid?)).to be false
       end
     end
@@ -166,7 +166,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       end
 
       it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(/Invalid venv detected at \/opt\/test-venv: python size=150, activate size=0/)
+        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=150, activate size=0})
         expect(provider.send(:venv_files_valid?)).to be false
       end
     end
@@ -180,7 +180,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       end
 
       it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(/Invalid venv detected at \/opt\/test-venv: python size=0, activate size=0/)
+        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=0, activate size=0})
         expect(provider.send(:venv_files_valid?)).to be false
       end
     end
@@ -293,7 +293,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
 
         expect { provider.send(:create_venv) }.to raise_error(
           Puppet::Error,
-          %r{Failed to create valid virtual environment.*venv files are zero-sized}
+          %r{Failed to create valid virtual environment.*venv files are zero-sized},
         )
       end
     end
@@ -317,7 +317,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
 
         expect { provider.send(:create_venv) }.to raise_error(
           Puppet::Error,
-          %r{venv files are zero-sized}
+          %r{venv files are zero-sized},
         )
       end
     end
@@ -341,7 +341,7 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
 
         expect { provider.send(:create_venv) }.to raise_error(
           Puppet::Error,
-          %r{venv files are zero-sized}
+          %r{venv files are zero-sized},
         )
       end
     end
