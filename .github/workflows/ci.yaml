@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    name: Lint, Build, Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby 3.1.5
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1.5'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install system packages (Dockerfile parity)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates
+
+      - name: Install uv (Dockerfile parity)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Ruby tooling (Dockerfile parity)
+        run: |
+          gem install puppet --version '~> 7.0'
+          gem install puppet-lint
+          gem install puppetlabs_spec_helper
+          gem install metadata-json-lint
+          gem install yaml-lint
+          gem install hiera-eyaml
+          gem install r10k
+          gem install pdk
+
+      - name: Install bundle dependencies
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Run pre-commit (all files)
+        run: uvx pre-commit run --all-files
+
+      - name: Run linters
+        run: |
+          puppet-lint --no-autoloader_layout-check lib/
+          pdk validate --puppet-version=7 -a
+
+      - name: Build module
+        run: pdk build --force
+
+      - name: Run tests
+        run: pdk test unit --puppet-version=7
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-package
+          path: pkg/*.tar.gz
+          if-no-files-found: ignore
