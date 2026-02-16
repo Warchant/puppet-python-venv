@@ -4,9 +4,6 @@
 
 Manage Python virtual environments with deterministic dependency state in Puppet.
 
-> To activate this badge, enable Codecov for this repository. If the repo is private,
-> add `CODECOV_TOKEN` in repository secrets.
-
 This module provides the custom resource type `python_venv`, which:
 
 - creates and removes venvs;
