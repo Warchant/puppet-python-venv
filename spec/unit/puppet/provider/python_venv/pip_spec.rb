@@ -773,11 +773,11 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
     describe '#parse_requirements_file' do
       it 'parses, strips comments, and sorts requirements' do
         allow(File).to receive(:readlines).with('/tmp/req.txt').and_return([
-          "requests==2.31.0\n",
-          "\n",
-          "flask==3.0.0 # inline\n",
-          "# full comment\n",
-        ])
+                                                                             "requests==2.31.0\n",
+                                                                             "\n",
+                                                                             "flask==3.0.0 # inline\n",
+                                                                             "# full comment\n",
+                                                                           ])
 
         expect(provider.send(:parse_requirements_file, '/tmp/req.txt')).to eq(['flask==3.0.0', 'requests==2.31.0'])
       end
@@ -824,7 +824,10 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
 
     describe '#log_requirement_list_changes' do
       it 'logs additions, removals and version changes' do
-        allow(Puppet).to receive(:info)
+        expect(Puppet).to receive(:info).with('  - Requirements file: /tmp/req.txt changed:').ordered
+        expect(Puppet).to receive(:info).with('      + flask==3.0.0').ordered
+        expect(Puppet).to receive(:info).with('      - django==4.2.0').ordered
+        expect(Puppet).to receive(:info).with('      ~ requests==1.0.0 => requests==2.0.0').ordered
 
         provider.send(
           :log_requirement_list_changes,
@@ -832,11 +835,6 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
           ['requests==2.0.0', 'flask==3.0.0'],
           ['requests==1.0.0', 'django==4.2.0'],
         )
-
-        expect(Puppet).to have_received(:info).with('  - Requirements file: /tmp/req.txt changed:')
-        expect(Puppet).to have_received(:info).with('      + flask==3.0.0')
-        expect(Puppet).to have_received(:info).with('      - django==4.2.0')
-        expect(Puppet).to have_received(:info).with('      ~ requests==1.0.0 => requests==2.0.0')
       end
     end
 

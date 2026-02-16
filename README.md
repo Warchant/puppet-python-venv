@@ -1,6 +1,6 @@
 # python_venv
 
-[![codecov](https://codecov.io/gh/warchantua/puppet-python-venv/branch/main/graph/badge.svg)](https://codecov.io/gh/warchantua/puppet-python-venv)
+[![codecov](https://codecov.io/github/Warchant/puppet-python-venv/graph/badge.svg?token=C3U1bn63qx)](https://codecov.io/github/Warchant/puppet-python-venv)
 
 Manage Python virtual environments with deterministic dependency state in Puppet.
 
