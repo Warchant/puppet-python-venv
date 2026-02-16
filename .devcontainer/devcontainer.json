@@ -1,0 +1,69 @@
+{
+  "name": "Puppet Module Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "workspaceFolder": "/app",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "puppet.puppet-vscode",
+        "redhat.vscode-yaml",
+        "ms-vscode.vscode-json",
+        "davidanson.vscode-markdownlint",
+        "streetsidesoftware.code-spell-checker",
+        "GitHub.copilot",
+        "ms-vscode.test-adapter-converter",
+        "hbenl.vscode-test-explorer",
+        "ms-vscode.powershell",
+        "ms-python.python",
+        "eamodio.gitlens",
+        "ms-vscode.vscode-json"
+      ],
+      "settings": {
+        "puppet.editorService.enable": true,
+        "puppet.editorService.debugFilePath": "/tmp/puppet-editor-services.log",
+        "puppet.editorService.featureFlags": [
+          "foldingRangeProvider",
+          "codeActionProvider",
+          "completionProvider"
+        ],
+        "puppet.format.enable": true,
+        "puppet.lint.enable": true,
+        "puppet.validate.enable": true,
+        "files.associations": {
+          "*.pp": "puppet",
+          "*.epp": "puppet",
+          "*.erb": "erb",
+          "Puppetfile": "ruby"
+        },
+        "yaml.schemas": {
+          "https://json.schemastore.org/pre-commit-config.json": [
+            ".pre-commit-config*.yaml",
+            ".pre-commit-config*.yml"
+          ]
+        },
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      }
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    }
+  },
+  "remoteUser": "root",
+  "mounts": [
+    "source=puppet-module-sf-gems,target=/usr/local/bundle,type=volume"
+  ]
+}

@@ -1,0 +1,12 @@
+# pre-commit run --all-files -c .pre-commit-config-puppet.yaml
+
+repos:
+  - repo: https://github.com/chriskuehl/puppet-pre-commit-hooks.git
+    rev: v2.2.0
+    hooks:
+      - id: bolt-validate
+      - id: epp-validate
+      - id: erb-validate
+      - id: puppet-validate
+      - id: r10k-validate
+      - id: ruby-validate

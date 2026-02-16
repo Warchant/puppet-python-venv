@@ -1,0 +1,25 @@
+{
+  "name": "warchantua-puppetvenv",
+  "version": "0.1.0",
+  "author": "Sky Fortress",
+  "summary": "Puppet module for Sky Fortress configuration",
+  "license": "Apache-2.0",
+  "source": "https://github.com/warchantua/puppet-python-venv",
+  "project_page": "https://github.com/Warchant/puppet-python-venv",
+  "issues_url": "https://github.com/Warchant/puppet-python-venv",
+  "dependencies": [],
+  "operatingsystem_support": [
+    {
+      "operatingsystem": "Linux"
+    }
+  ],
+  "requirements": [
+    {
+      "name": "puppet",
+      "version_requirement": ">= 7.24 < 9.0.0"
+    }
+  ],
+  "pdk-version": "3.4.0",
+  "template-url": "https://github.com/puppetlabs/pdk-templates#3.4.0",
+  "template-ref": "tags/3.4.0-0-gd3cc13f"
+}

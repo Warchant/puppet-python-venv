@@ -1,0 +1,21 @@
+# pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0  # Use the latest stable version
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-illegal-windows-names
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: ['--fix', 'lf']
+      - id: trailing-whitespace
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: '3.2.1'
+    hooks:
+    -   id: editorconfig-checker
+        alias: ec
