@@ -738,4 +738,115 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       )
     end
   end
+
+  describe 'additional coverage cases' do
+    describe '.default_python_cmd' do
+      it 'returns configured python3 command when available' do
+        allow(described_class).to receive(:command).with(:python3).and_return('/usr/bin/python3')
+        expect(described_class.default_python_cmd).to eq('/usr/bin/python3')
+      end
+
+      it 'falls back to plain python3 when command lookup fails' do
+        allow(described_class).to receive(:command).with(:python3).and_raise(Puppet::MissingCommand, 'missing')
+        expect(described_class.default_python_cmd).to eq('python3')
+      end
+    end
+
+    describe '#flush' do
+      it 'synchronizes requirements when venv exists and requirements are declared' do
+        allow(provider).to receive(:exists?).and_return(true)
+        allow(provider).to receive(:requirements?).and_return(true)
+        expect(provider).to receive(:sync_requirements)
+
+        provider.flush
+      end
+
+      it 'does nothing when venv does not exist' do
+        allow(provider).to receive(:exists?).and_return(false)
+        allow(provider).to receive(:requirements?).and_return(true)
+        expect(provider).not_to receive(:sync_requirements)
+
+        provider.flush
+      end
+    end
+
+    describe '#parse_requirements_file' do
+      it 'parses, strips comments, and sorts requirements' do
+        allow(File).to receive(:readlines).with('/tmp/req.txt').and_return([
+          "requests==2.31.0\n",
+          "\n",
+          "flask==3.0.0 # inline\n",
+          "# full comment\n",
+        ])
+
+        expect(provider.send(:parse_requirements_file, '/tmp/req.txt')).to eq(['flask==3.0.0', 'requests==2.31.0'])
+      end
+
+      it 'returns empty array and logs warning when parsing fails' do
+        allow(File).to receive(:readlines).with('/tmp/req.txt').and_raise(StandardError, 'boom')
+        expect(Puppet).to receive(:warning).with(%r{Failed to parse requirements file /tmp/req.txt: boom})
+
+        expect(provider.send(:parse_requirements_file, '/tmp/req.txt')).to eq([])
+      end
+    end
+
+    describe '#calculate_expected_state' do
+      it 'raises Puppet::Error when requirements file does not exist' do
+        resource[:requirements_files] = ['/tmp/missing.txt']
+        allow(File).to receive(:exist?).with('/tmp/missing.txt').and_return(false)
+
+        expect { provider.send(:calculate_expected_state) }
+          .to raise_error(Puppet::Error, %r{Requirements file does not exist: /tmp/missing.txt})
+      end
+    end
+
+    describe '#upgrade_pip' do
+      it 'logs warning and continues when pip upgrade fails' do
+        allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'upgrade failed')
+        expect(Puppet).to receive(:warning).with(%r{Failed to upgrade pip in /opt/test-venv: upgrade failed})
+
+        expect { provider.send(:upgrade_pip) }.not_to raise_error
+      end
+    end
+
+    describe '#sync_requirements' do
+      it 'logs in-sync message and skips installation when no changes are detected' do
+        allow(provider).to receive(:requirements?).and_return(true)
+        allow(provider).to receive(:calculate_expected_state).and_return({ 'individual_requirements' => 'abc' })
+        allow(provider).to receive(:load_requirements_state).and_return({ 'individual_requirements' => 'abc' })
+        allow(provider).to receive(:states_differ?).and_return(false)
+        expect(Puppet).to receive(:info).with(%r{No changes detected - requirements are in sync})
+        expect(provider).not_to receive(:install_all_requirements)
+
+        provider.send(:sync_requirements)
+      end
+    end
+
+    describe '#log_requirement_list_changes' do
+      it 'logs additions, removals and version changes' do
+        allow(Puppet).to receive(:info)
+
+        provider.send(
+          :log_requirement_list_changes,
+          'Requirements file: /tmp/req.txt',
+          ['requests==2.0.0', 'flask==3.0.0'],
+          ['requests==1.0.0', 'django==4.2.0'],
+        )
+
+        expect(Puppet).to have_received(:info).with('  - Requirements file: /tmp/req.txt changed:')
+        expect(Puppet).to have_received(:info).with('      + flask==3.0.0')
+        expect(Puppet).to have_received(:info).with('      - django==4.2.0')
+        expect(Puppet).to have_received(:info).with('      ~ requests==1.0.0 => requests==2.0.0')
+      end
+    end
+
+    describe '#save_state_after_install' do
+      it 'saves state without pip_freeze_hash when hash cannot be calculated' do
+        allow(provider).to receive(:get_pip_freeze_hash).and_return(nil)
+        expect(provider).to receive(:save_requirements_state).with({ 'individual_requirements' => 'abc' })
+
+        provider.send(:save_state_after_install, { 'individual_requirements' => 'abc' })
+      end
+    end
+  end
 end

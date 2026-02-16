@@ -85,6 +85,11 @@ describe Puppet::Type.type(:python_venv) do
         resource = type.new(path: '/opt/venv')
         expect(resource[:system_site_packages]).to be false
       end
+
+      it 'rejects invalid values' do
+        expect { type.new(path: '/opt/venv', system_site_packages: 'maybe') }
+          .to raise_error(Puppet::ResourceError, %r{Invalid value "maybe"})
+      end
     end
 
     context 'requirements parameter' do
@@ -200,6 +205,33 @@ describe Puppet::Type.type(:python_venv) do
       expect(resource[:requirements]).to eq(['requests==2.28.1'])
       expect(resource[:requirements_files]).to eq(['/opt/requirements.txt'])
       expect(resource[:pip_args]).to eq(['--no-cache-dir'])
+    end
+  end
+
+  describe 'requirements_state property' do
+    it 'retrieves :insync when provider reports in-sync requirements' do
+      resource = type.new(path: '/opt/venv')
+      provider = instance_double('provider', requirements_in_sync?: true)
+      allow(resource).to receive(:provider).and_return(provider)
+
+      expect(resource.property(:requirements_state).retrieve).to eq(:insync)
+    end
+
+    it 'retrieves :out_of_sync when provider reports out-of-sync requirements' do
+      resource = type.new(path: '/opt/venv')
+      provider = instance_double('provider', requirements_in_sync?: false)
+      allow(resource).to receive(:provider).and_return(provider)
+
+      expect(resource.property(:requirements_state).retrieve).to eq(:out_of_sync)
+    end
+
+    it 'insync? returns true only for :insync and sync returns :insync' do
+      resource = type.new(path: '/opt/venv')
+      property = resource.property(:requirements_state)
+
+      expect(property.insync?(:insync)).to be true
+      expect(property.insync?(:out_of_sync)).to be false
+      expect(property.sync).to eq(:insync)
     end
   end
 end
