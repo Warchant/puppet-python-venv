@@ -14,6 +14,8 @@ def location_for(place_or_version, fake_version = nil)
 end
 
 group :development do
+  gem "simplecov", '~> 0.22',                    require: false
+  gem "simplecov-cobertura", '~> 3.1',           require: false
   gem "json", '= 2.1.0',                         require: false if Gem::Requirement.create(['>= 2.5.0', '< 2.7.0']).satisfied_by?(Gem::Version.new(RUBY_VERSION.dup))
   gem "json", '= 2.3.0',                         require: false if Gem::Requirement.create(['>= 2.7.0', '< 3.0.0']).satisfied_by?(Gem::Version.new(RUBY_VERSION.dup))
   gem "json", '= 2.5.1',                         require: false if Gem::Requirement.create(['>= 3.0.0', '< 3.0.5']).satisfied_by?(Gem::Version.new(RUBY_VERSION.dup))
