@@ -2,7 +2,9 @@
 
 [![codecov](https://codecov.io/github/Warchant/puppet-python-venv/graph/badge.svg?token=C3U1bn63qx)](https://codecov.io/github/Warchant/puppet-python-venv)
 
-Manage Python virtual environments with deterministic dependency state in Puppet.
+Manage Python virtual environments with deterministic dependency state in Puppet using [`uv`](https://github.com/astral-sh/uv).
+
+> **Prerequisite:** `uv` must be installed system-wide on the managed node.
 
 > To activate this badge, enable Codecov for this repository. If the repo is private,
 > add `CODECOV_TOKEN` in repository secrets.
@@ -36,10 +38,10 @@ In practice, your manifest is the source of truth for the venv content.
 - `path` (namevar): absolute path to the virtualenv directory.
 - `ensure`: `present` (default) or `absent`.
 - `python_executable`: Python binary for venv creation. Default: `python3`.
-- `system_site_packages`: `true`/`false` (default `false`). if `true` - adds `--system-site-packages` flag to `pip install`
+- `system_site_packages`: `true`/`false` (default `false`). if `true` - passes `--system-site-packages` to `uv venv`.
 - `requirements`: array of requirement specs (for example `['httpx==0.27.0']`).
 - `requirements_files`: array of absolute paths to requirements files.
-- `pip_args`: extra args appended to `pip install` commands.
+- `uv_args`: extra args appended to `uv pip install` commands.
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.
 
@@ -78,7 +80,7 @@ python_venv { '/opt/apps/myapp/.venv':
     'gunicorn==22.0.0',
     'uvicorn[standard]==0.30.6',
   ],
-  pip_args             => ['--no-cache-dir'],
+  uv_args              => ['--no-cache-dir'],
 }
 ```
 

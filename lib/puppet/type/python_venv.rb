@@ -2,7 +2,7 @@
 
 Puppet::Type.newtype(:python_venv) do
   @doc = <<-DOC
-    Manages Python virtual environments with dependency installation.
+    Manages Python virtual environments using uv.
 
     This type creates a Python virtual environment and installs specified
     dependencies atomically. It supports both requirements.txt files and
@@ -103,17 +103,17 @@ Puppet::Type.newtype(:python_venv) do
     defaultto []
   end
 
-  newparam(:pip_args) do
-    desc 'Additional arguments to pass to pip install commands.'
+  newparam(:uv_args) do
+    desc 'Additional arguments to pass to uv pip install commands.'
 
     validate do |value|
       unless value.is_a?(Array)
-        raise ArgumentError, "Pip args must be an array, got: #{value.class}"
+        raise ArgumentError, "uv_args must be an array, got: #{value.class}"
       end
 
       value.each do |arg|
         unless arg.is_a?(String)
-          raise ArgumentError, "Each pip arg must be a string, got: #{arg.inspect}"
+          raise ArgumentError, "Each uv_arg must be a string, got: #{arg.inspect}"
         end
       end
     end

@@ -32,7 +32,6 @@ describe 'python_venv resource' do
 
       # Verify venv was created
       expect(file("#{venv_path}/bin/python")).to be_executable
-      expect(file("#{venv_path}/bin/pip")).to be_executable
       expect(file("#{venv_path}/pyvenv.cfg")).to be_file
     end
 
@@ -75,7 +74,7 @@ describe 'python_venv resource' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify packages are installed
-      pip_list = shell("#{venv_path}/bin/pip list --format=json").stdout
+      pip_list = shell("uv pip list --python #{venv_path}/bin/python --format=json").stdout
       packages = JSON.parse(pip_list)
       package_names = packages.map { |p| p['name'].downcase }
 
@@ -116,7 +115,7 @@ describe 'python_venv resource' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify packages are installed
-      pip_list = shell("#{venv_path}/bin/pip list --format=json").stdout
+      pip_list = shell("uv pip list --python #{venv_path}/bin/python --format=json").stdout
       packages = JSON.parse(pip_list)
       package_names = packages.map { |p| p['name'].downcase }
 
@@ -154,7 +153,7 @@ describe 'python_venv resource' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify packages are installed
-      pip_list = shell("#{venv_path}/bin/pip list --format=json").stdout
+      pip_list = shell("uv pip list --python #{venv_path}/bin/python --format=json").stdout
       packages = JSON.parse(pip_list)
       package_names = packages.map { |p| p['name'].downcase }
 
@@ -232,22 +231,22 @@ describe 'python_venv resource' do
     end
   end
 
-  describe 'pip args support' do
+  describe 'uv_args support' do
     let(:manifest) do
       <<-PUPPET
         python_venv { '#{venv_path}':
           ensure       => present,
           requirements => ['six'],
-          pip_args     => ['--no-cache-dir', '--quiet'],
+          uv_args      => ['--no-cache-dir', '--quiet'],
         }
       PUPPET
     end
 
-    it 'successfully uses pip args during installation' do
+    it 'successfully uses uv_args during installation' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify the package was still installed despite the extra args
-      pip_list = shell("#{venv_path}/bin/pip list --format=json").stdout
+      pip_list = shell("uv pip list --python #{venv_path}/bin/python --format=json").stdout
       packages = JSON.parse(pip_list)
       package_names = packages.map { |p| p['name'].downcase }
 
