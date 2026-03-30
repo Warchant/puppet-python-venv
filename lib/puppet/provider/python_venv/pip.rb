@@ -5,23 +5,27 @@ require 'tempfile'
 require 'digest'
 require 'set'
 
-Puppet::Type.type(:python_venv).provide(:uv) do
-  desc 'Manages Python virtual environments using uv.'
+Puppet::Type.type(:python_venv).provide(:pip) do
+  desc 'Manages Python virtual environments using python3 -m venv and pip.'
 
-  commands uv: 'uv'
+  commands python3: 'python3'
 
-  defaultfor kernel: 'Linux'
-
-  def uv_cmd
-    self.class.command(:uv)
+  def self.default_python_cmd
+    command(:python3)
+  rescue Puppet::MissingCommand
+    'python3'
   end
 
-  def python_spec
-    resource[:python_executable]
+  def python_cmd
+    resource[:python_executable] || self.class.default_python_cmd
   end
 
   def venv_path
     resource[:path]
+  end
+
+  def pip_path
+    File.join(venv_path, 'bin', 'pip')
   end
 
   def python_venv_path
@@ -33,7 +37,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   end
 
   # Check if venv files are valid (not zero-sized)
-  # Sometimes uv venv exits with code 0 but creates invalid venv with zero-sized files
+  # Sometimes python3 -m venv exits with code 0 but creates invalid venv with zero-sized files
   def venv_files_valid?
     return false unless File.exist?(python_venv_path) && File.exist?(activate_path)
 
@@ -49,7 +53,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   end
 
   def exists?
-    File.directory?(venv_path) && File.executable?(python_venv_path) && venv_files_valid?
+    File.directory?(venv_path) && File.executable?(python_venv_path) && File.executable?(pip_path) && venv_files_valid?
   end
 
   def create
@@ -78,7 +82,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
     # Check pip freeze hash if it exists
     if actual_state['pip_freeze_hash']
-      current_freeze_hash = get_freeze_hash
+      current_freeze_hash = get_pip_freeze_hash
       return false if current_freeze_hash && actual_state['pip_freeze_hash'] != current_freeze_hash
     end
 
@@ -120,17 +124,18 @@ Puppet::Type.type(:python_venv).provide(:uv) do
     Puppet.debug("Saved requirements state: #{state.inspect}")
   end
 
-  # Get hash of currently installed packages via uv pip freeze
-  def get_freeze_hash
+  # Get hash of currently installed packages via pip freeze
+  def get_pip_freeze_hash
     return nil unless exists?
 
     begin
-      output = execute([uv_cmd, 'pip', 'freeze', '--python', python_venv_path], failonfail: true)
+      # use only `locally installed` deps in `venv` for pip freeze
+      output = execute([pip_path, 'freeze', '-l'], failonfail: true)
       hash = Digest::SHA256.hexdigest(output)
-      Puppet.debug("uv pip freeze hash: #{hash[0..7]}...")
+      Puppet.debug("Pip freeze hash: #{hash[0..7]}...")
       hash
     rescue Puppet::ExecutionFailure => e
-      Puppet.warning("Failed to run uv pip freeze: #{e.message}")
+      Puppet.warning("Failed to run pip freeze: #{e.message}")
       nil
     end
   end
@@ -185,11 +190,11 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   private
 
   def create_venv
-    cmd = [uv_cmd, 'venv', '--python', python_spec]
+    cmd = [python_cmd, '-m', 'venv']
     cmd << '--system-site-packages' if resource[:system_site_packages]
     cmd << venv_path
 
-    Puppet.info("Creating Python virtual environment at #{venv_path} using uv")
+    Puppet.info("Creating Python virtual environment at #{venv_path}")
 
     begin
       execute(cmd, failonfail: true, combine: true)
@@ -198,7 +203,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
     end
 
     # Verify venv was created successfully
-    unless File.directory?(venv_path) && File.executable?(python_venv_path)
+    unless File.directory?(venv_path) && File.executable?(python_venv_path) && File.executable?(pip_path)
       raise Puppet::Error, "Virtual environment creation appeared to succeed but #{venv_path} is not functional"
     end
 
@@ -208,6 +213,18 @@ Puppet::Type.type(:python_venv).provide(:uv) do
       # Cleanup the invalid venv
       Puppet::FileSystem.rmtree(venv_path) if File.exist?(venv_path)
       raise Puppet::Error, "Failed to create valid virtual environment at #{venv_path}: venv files are zero-sized (corrupted creation)"
+    end
+
+    # Upgrade pip to ensure we have latest features
+    upgrade_pip
+  end
+
+  def upgrade_pip
+    Puppet.debug("Upgrading pip in #{venv_path}")
+    begin
+      execute([pip_path, 'install', '--upgrade', 'pip'], failonfail: false, combine: true)
+    rescue Puppet::ExecutionFailure => e
+      Puppet.warning("Failed to upgrade pip in #{venv_path}: #{e.message}")
     end
   end
 
@@ -255,7 +272,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
     # Check pip freeze hash if it exists
     if actual_state['pip_freeze_hash']
-      current_freeze_hash = get_freeze_hash
+      current_freeze_hash = get_pip_freeze_hash
       return true if current_freeze_hash && actual_state['pip_freeze_hash'] != current_freeze_hash
     end
 
@@ -298,7 +315,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
     # Check pip freeze hash
     return unless actual_state['pip_freeze_hash']
-    current_freeze_hash = get_freeze_hash
+    current_freeze_hash = get_pip_freeze_hash
     return unless current_freeze_hash && actual_state['pip_freeze_hash'] != current_freeze_hash
     Puppet.info('  - Installed packages modified externally')
   end
@@ -382,7 +399,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
       files_to_install << individual_requirements_file
     end
 
-    # Install each file (always force during sync to ensure consistency)
+    # Install each file with --force-reinstall (always force during sync to ensure consistency)
     files_to_install.each do |req_file|
       install_requirements_file(req_file)
     end
@@ -393,7 +410,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
     new_state = expected_state.dup
 
     # Add pip freeze hash
-    freeze_hash = get_freeze_hash
+    freeze_hash = get_pip_freeze_hash
     if freeze_hash
       new_state['pip_freeze_hash'] = freeze_hash
       Puppet.debug("Saved pip freeze hash: #{freeze_hash[0..7]}...")
@@ -403,15 +420,16 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   end
 
   def install_requirements_file(requirements_file)
-    cmd = [uv_cmd, 'pip', 'install', '-r', requirements_file, '--python', python_venv_path]
+    cmd = [pip_path, 'install']
+    cmd << '-r' << requirements_file
     cmd += resource[:extra_args]
 
-    Puppet.info("Executing uv pip install: #{cmd.join(' ')}")
+    Puppet.info("Executing pip install: #{cmd.join(' ')}")
 
     begin
       output = execute(cmd, failonfail: true, combine: true)
-      Puppet.info("uv pip install completed successfully for #{requirements_file}")
-      Puppet.debug("uv pip install output: #{output}")
+      Puppet.info("Pip install completed successfully for #{requirements_file}")
+      Puppet.debug("Pip install output: #{output}")
     rescue Puppet::ExecutionFailure => e
       raise Puppet::Error, "Failed to install requirements from #{requirements_file} in #{venv_path}: #{e.message}"
     end

@@ -231,18 +231,18 @@ describe 'python_venv resource' do
     end
   end
 
-  describe 'uv_args support' do
+  describe 'extra_args support' do
     let(:manifest) do
       <<-PUPPET
         python_venv { '#{venv_path}':
           ensure       => present,
           requirements => ['six'],
-          uv_args      => ['--no-cache-dir', '--quiet'],
+          extra_args      => ['--no-cache-dir', '--quiet'],
         }
       PUPPET
     end
 
-    it 'successfully uses uv_args during installation' do
+    it 'successfully uses extra_args during installation' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify the package was still installed despite the extra args

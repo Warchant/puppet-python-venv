@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe Puppet::Type.type(:python_venv).provider(:uv) do
+describe Puppet::Type.type(:python_venv).provider(:pip) do
   let(:resource) do
     Puppet::Type.type(:python_venv).new(
       path: '/opt/test-venv',
@@ -16,15 +16,12 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
   let(:provider) { described_class.new(resource) }
 
-  before(:each) do
-    allow(provider).to receive(:uv_cmd).and_return('/usr/bin/uv')
-  end
-
   describe '#exists?' do
     context 'when venv exists and is functional' do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
@@ -46,10 +43,11 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       end
     end
 
-    context 'when venv directory exists but python executable is missing' do
+    context 'when venv directory exists but executables are missing' do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(false)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(false)
       end
 
       it 'returns false' do
@@ -61,6 +59,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
@@ -77,6 +76,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
@@ -93,6 +93,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
@@ -241,15 +242,17 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       allow(provider).to receive(:execute)
       allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
       allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+      allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
       allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
       allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
       allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
       allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(200)
+      allow(provider).to receive(:upgrade_pip)
     end
 
     it 'creates venv with correct command' do
       expect(provider).to receive(:execute).with(
-        ['/usr/bin/uv', 'venv', '--python', '/usr/bin/python3', '/opt/test-venv'],
+        ['/usr/bin/python3', '-m', 'venv', '/opt/test-venv'],
         hash_including(failonfail: true, combine: true),
       )
 
@@ -263,7 +266,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
       it 'includes --system-site-packages flag' do
         expect(provider).to receive(:execute).with(
-          ['/usr/bin/uv', 'venv', '--python', '/usr/bin/python3', '--system-site-packages', '/opt/test-venv'],
+          ['/usr/bin/python3', '-m', 'venv', '--system-site-packages', '/opt/test-venv'],
           hash_including(failonfail: true, combine: true),
         )
 
@@ -275,6 +278,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
@@ -298,6 +302,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
@@ -321,6 +326,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
         allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
+        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
         allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
         allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
@@ -346,7 +352,8 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
         allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(250)
       end
 
-      it 'completes successfully without pip upgrade' do
+      it 'completes successfully and upgrades pip' do
+        expect(provider).to receive(:upgrade_pip)
         expect { provider.send(:create_venv) }.not_to raise_error
       end
     end
@@ -382,16 +389,16 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
         allow(provider).to receive(:execute)
       end
 
-      it 'installs requirements with uv pip and uv_args' do
+      it 'installs requirements with extra_args' do
         expect(provider).to receive(:execute).with(
-          ['/usr/bin/uv', 'pip', 'install', '-r', '/tmp/requirements.txt', '--python', '/opt/test-venv/bin/python', '--no-cache-dir'],
+          ['/opt/test-venv/bin/pip', 'install', '-r', '/tmp/requirements.txt', '--no-cache-dir'],
           hash_including(failonfail: true, combine: true),
         )
 
         provider.send(:install_requirements_file, '/tmp/requirements.txt')
       end
 
-      context 'when uv pip install fails' do
+      context 'when pip install fails' do
         before(:each) do
           allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'install failed')
         end
@@ -426,32 +433,32 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       end
     end
 
-    describe '#get_freeze_hash' do
+    describe '#get_pip_freeze_hash' do
       context 'when venv exists' do
         before(:each) do
           allow(provider).to receive(:exists?).and_return(true)
           allow(provider).to receive(:execute).with(
-            ['/usr/bin/uv', 'pip', 'freeze', '--python', '/opt/test-venv/bin/python'],
+            ['/opt/test-venv/bin/pip', 'freeze', '-l'],
             hash_including(failonfail: true),
           ).and_return("flask==2.2.2\nrequests==2.28.1\n")
         end
 
-        it 'returns SHA256 hash of uv pip freeze output' do
-          hash = provider.send(:get_freeze_hash)
+        it 'returns SHA256 hash of pip freeze output' do
+          hash = provider.send(:get_pip_freeze_hash)
           expect(hash).to be_a(String)
           expect(hash.length).to eq(64) # SHA256 hex digest length
         end
 
         it 'hash changes when installed packages change' do
-          old_hash = provider.send(:get_freeze_hash)
+          old_hash = provider.send(:get_pip_freeze_hash)
 
-          # Change uv pip freeze output
+          # Change pip freeze output
           allow(provider).to receive(:execute).with(
-            ['/usr/bin/uv', 'pip', 'freeze', '--python', '/opt/test-venv/bin/python'],
+            ['/opt/test-venv/bin/pip', 'freeze', '-l'],
             hash_including(failonfail: true),
           ).and_return("flask==2.3.0\nrequests==2.28.1\n")
 
-          new_hash = provider.send(:get_freeze_hash)
+          new_hash = provider.send(:get_pip_freeze_hash)
           expect(old_hash).not_to eq(new_hash)
         end
       end
@@ -462,31 +469,35 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
         end
 
         it 'returns nil' do
-          expect(provider.send(:get_freeze_hash)).to be_nil
+          expect(provider.send(:get_pip_freeze_hash)).to be_nil
         end
       end
 
-      context 'when uv pip freeze fails' do
+      context 'when pip freeze fails' do
         before(:each) do
           allow(provider).to receive(:exists?).and_return(true)
-          allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'uv failed')
+          allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'pip failed')
         end
 
         it 'logs warning and returns nil' do
-          expect(Puppet).to receive(:warning).with(%r{Failed to run uv pip freeze})
-          expect(provider.send(:get_freeze_hash)).to be_nil
+          expect(Puppet).to receive(:warning).with(%r{Failed to run pip freeze})
+          expect(provider.send(:get_pip_freeze_hash)).to be_nil
         end
       end
     end
   end
 
   describe 'helper methods' do
-    it 'returns correct python spec' do
-      expect(provider.python_spec).to eq('/usr/bin/python3')
+    it 'returns correct python command' do
+      expect(provider.python_cmd).to eq('/usr/bin/python3')
     end
 
     it 'returns correct venv path' do
       expect(provider.venv_path).to eq('/opt/test-venv')
+    end
+
+    it 'returns correct pip path' do
+      expect(provider.pip_path).to eq('/opt/test-venv/bin/pip')
     end
 
     it 'returns correct python venv path' do
@@ -495,14 +506,6 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
     it 'returns correct activate path' do
       expect(provider.activate_path).to eq('/opt/test-venv/bin/activate')
-    end
-
-    describe '#uv_cmd' do
-      it 'returns configured uv command' do
-        allow(described_class).to receive(:command).with(:uv).and_return('/opt/custom/uv')
-        fresh_provider = described_class.new(resource)
-        expect(fresh_provider.uv_cmd).to eq('/opt/custom/uv')
-      end
     end
   end
 
@@ -517,8 +520,6 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     let(:venv_exists_provider) { described_class.new(venv_exists_resource) }
 
     before(:each) do
-      allow(venv_exists_provider).to receive(:uv_cmd).and_return('/usr/bin/uv')
-
       # Mock that venv exists
       allow(venv_exists_provider).to receive(:exists?).and_return(true)
       allow(venv_exists_provider).to receive(:exists?).and_return(true)
@@ -531,9 +532,9 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       allow(File).to receive(:write)
       allow(File).to receive(:read).and_call_original
 
-      # Mock execute for uv pip install
+      # Mock execute for pip install
       allow(venv_exists_provider).to receive(:execute).and_return('')
-      allow(venv_exists_provider).to receive(:get_freeze_hash).and_return('newhash123')
+      allow(venv_exists_provider).to receive(:get_pip_freeze_hash).and_return('newhash123')
 
       # Mock individual_requirements_hash
       allow(venv_exists_provider).to receive(:individual_requirements_hash).and_return('reqhash456')
@@ -564,7 +565,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     end
   end
 
-  describe 'when state file is missing (venv not exists)' do
+  describe 'when state file is missing' do
     let(:venv_exists_resource) do
       Puppet::Type.type(:python_venv).new(
         path: '/opt/existing-venv',
@@ -575,8 +576,6 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     let(:venv_exists_provider) { described_class.new(venv_exists_resource) }
 
     before(:each) do
-      allow(venv_exists_provider).to receive(:uv_cmd).and_return('/usr/bin/uv')
-
       # Mock that venv exists
       allow(venv_exists_provider).to receive(:exists?).and_return(true)
       allow(venv_exists_provider).to receive(:exists?).and_return(false)
@@ -589,9 +588,9 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       allow(File).to receive(:write)
       allow(File).to receive(:read).and_call_original
 
-      # Mock execute for uv pip install
+      # Mock execute for pip install
       allow(venv_exists_provider).to receive(:execute).and_return('')
-      allow(venv_exists_provider).to receive(:get_freeze_hash).and_return('newhash123')
+      allow(venv_exists_provider).to receive(:get_pip_freeze_hash).and_return('newhash123')
 
       # Mock individual_requirements_hash
       allow(venv_exists_provider).to receive(:individual_requirements_hash).and_return('reqhash456')
@@ -625,7 +624,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     end
   end
 
-  describe 'when pip freeze hash is poisoned by manual package install' do
+  describe 'when pip freeze hash is poisoned by manual pip install' do
     let(:poisoned_venv_resource) do
       Puppet::Type.type(:python_venv).new(
         path: '/opt/poisoned-venv',
@@ -636,8 +635,6 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     let(:poisoned_venv_provider) { described_class.new(poisoned_venv_resource) }
 
     before(:each) do
-      allow(poisoned_venv_provider).to receive(:uv_cmd).and_return('/usr/bin/uv')
-
       # Mock that venv exists
       allow(poisoned_venv_provider).to receive(:exists?).and_return(true)
 
@@ -657,10 +654,10 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       # Mock that individual requirements hash hasn't changed
       allow(poisoned_venv_provider).to receive(:individual_requirements_hash).and_return('original_req_hash_123')
 
-      # Mock that freeze hash HAS changed (someone manually installed packages)
+      # Mock that pip freeze hash HAS changed (someone manually installed packages)
       # First call returns the poisoned hash, subsequent calls return new hash after reinstall
       call_count = 0
-      allow(poisoned_venv_provider).to receive(:get_freeze_hash) do
+      allow(poisoned_venv_provider).to receive(:get_pip_freeze_hash) do
         call_count += 1
         if call_count == 1
           'poisoned_freeze_xyz' # Different from original_freeze_abc
@@ -672,7 +669,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       # Mock file operations
       allow(File).to receive(:write)
 
-      # Mock execute for uv pip install
+      # Mock execute for pip install
       allow(poisoned_venv_provider).to receive(:execute).and_return('')
     end
 
@@ -693,7 +690,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       poisoned_venv_provider.send(:sync_requirements)
     end
 
-    it 'triggers reinstallation' do
+    it 'triggers reinstallation with force flag' do
       # Allow logging
       allow(Puppet).to receive(:info)
       allow(Puppet).to receive(:debug)
@@ -743,6 +740,18 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
   end
 
   describe 'additional coverage cases' do
+    describe '.default_python_cmd' do
+      it 'returns configured python3 command when available' do
+        allow(described_class).to receive(:command).with(:python3).and_return('/usr/bin/python3')
+        expect(described_class.default_python_cmd).to eq('/usr/bin/python3')
+      end
+
+      it 'falls back to plain python3 when command lookup fails' do
+        allow(described_class).to receive(:command).with(:python3).and_raise(Puppet::MissingCommand, 'missing')
+        expect(described_class.default_python_cmd).to eq('python3')
+      end
+    end
+
     describe '#flush' do
       it 'synchronizes requirements when venv exists and requirements are declared' do
         allow(provider).to receive(:exists?).and_return(true)
@@ -791,6 +800,15 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       end
     end
 
+    describe '#upgrade_pip' do
+      it 'logs warning and continues when pip upgrade fails' do
+        allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'upgrade failed')
+        expect(Puppet).to receive(:warning).with(%r{Failed to upgrade pip in /opt/test-venv: upgrade failed})
+
+        expect { provider.send(:upgrade_pip) }.not_to raise_error
+      end
+    end
+
     describe '#sync_requirements' do
       it 'logs in-sync message and skips installation when no changes are detected' do
         allow(provider).to receive(:requirements?).and_return(true)
@@ -822,7 +840,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
     describe '#save_state_after_install' do
       it 'saves state without pip_freeze_hash when hash cannot be calculated' do
-        allow(provider).to receive(:get_freeze_hash).and_return(nil)
+        allow(provider).to receive(:get_pip_freeze_hash).and_return(nil)
         expect(provider).to receive(:save_requirements_state).with({ 'individual_requirements' => 'abc' })
 
         provider.send(:save_state_after_install, { 'individual_requirements' => 'abc' })
