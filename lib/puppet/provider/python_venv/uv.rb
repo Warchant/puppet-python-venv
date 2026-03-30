@@ -403,7 +403,7 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
   def install_requirements_file(requirements_file)
     cmd = [uv_cmd, 'pip', 'install', '-r', requirements_file, '--python', python_venv_path]
-    cmd += resource[:extra_args]
+    cmd += resource[:pip_args] + resource[:extra_args]
 
     Puppet.info("Executing uv pip install: #{cmd.join(' ')}")
 

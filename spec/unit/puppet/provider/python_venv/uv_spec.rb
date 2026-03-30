@@ -10,7 +10,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
       system_site_packages: false,
       requirements: ['requests==2.28.1', 'flask==2.2.2'],
       requirements_files: ['/opt/requirements.txt'],
-      extra_args: ['--no-cache-dir'],
+      pip_args: ['--no-cache-dir'],
     )
   end
 

@@ -231,18 +231,18 @@ describe 'python_venv resource' do
     end
   end
 
-  describe 'extra_args support' do
+  describe 'pip_args support' do
     let(:manifest) do
       <<-PUPPET
         python_venv { '#{venv_path}':
           ensure       => present,
           requirements => ['six'],
-          extra_args      => ['--no-cache-dir', '--quiet'],
+          pip_args      => ['--no-cache-dir', '--quiet'],
         }
       PUPPET
     end
 
-    it 'successfully uses extra_args during installation' do
+    it 'successfully uses pip_args during installation' do
       apply_manifest(manifest, catch_failures: true)
 
       # Verify the package was still installed despite the extra args
