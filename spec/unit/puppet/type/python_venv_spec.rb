@@ -31,8 +31,8 @@ describe Puppet::Type.type(:python_venv) do
       expect(type.attrtype(:requirements_files)).to eq(:param)
     end
 
-    it 'has a uv_args parameter' do
-      expect(type.attrtype(:uv_args)).to eq(:param)
+    it 'has a extra_args parameter' do
+      expect(type.attrtype(:extra_args)).to eq(:param)
     end
   end
 
@@ -134,22 +134,22 @@ describe Puppet::Type.type(:python_venv) do
       end
     end
 
-    context 'uv_args parameter' do
+    context 'extra_args parameter' do
       it 'accepts an array of strings' do
-        expect { type.new(path: '/opt/venv', uv_args: ['--no-cache-dir', '--timeout=30']) }.not_to raise_error
+        expect { type.new(path: '/opt/venv', extra_args: ['--no-cache-dir', '--timeout=30']) }.not_to raise_error
       end
 
       it 'rejects non-arrays' do
-        expect { type.new(path: '/opt/venv', uv_args: '--no-cache-dir') }.to raise_error(Puppet::Error, %r{uv_args must be an array})
+        expect { type.new(path: '/opt/venv', extra_args: '--no-cache-dir') }.to raise_error(Puppet::Error, %r{extra_args must be an array})
       end
 
       it 'rejects arrays with non-string elements' do
-        expect { type.new(path: '/opt/venv', uv_args: ['--no-cache-dir', 123]) }.to raise_error(Puppet::Error, %r{must be a string})
+        expect { type.new(path: '/opt/venv', extra_args: ['--no-cache-dir', 123]) }.to raise_error(Puppet::Error, %r{must be a string})
       end
 
       it 'has a default empty array' do
         resource = type.new(path: '/opt/venv')
-        expect(resource[:uv_args]).to eq([])
+        expect(resource[:extra_args]).to eq([])
       end
     end
   end
@@ -195,7 +195,7 @@ describe Puppet::Type.type(:python_venv) do
         system_site_packages: true,
         requirements: ['requests==2.28.1'],
         requirements_files: ['/opt/requirements.txt'],
-        uv_args: ['--no-cache-dir'],
+        extra_args: ['--no-cache-dir'],
       )
 
       expect(resource[:path]).to eq('/opt/venv')
@@ -204,7 +204,7 @@ describe Puppet::Type.type(:python_venv) do
       expect(resource[:system_site_packages]).to be true
       expect(resource[:requirements]).to eq(['requests==2.28.1'])
       expect(resource[:requirements_files]).to eq(['/opt/requirements.txt'])
-      expect(resource[:uv_args]).to eq(['--no-cache-dir'])
+      expect(resource[:extra_args]).to eq(['--no-cache-dir'])
     end
   end
 

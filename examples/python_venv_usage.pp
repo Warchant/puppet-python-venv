@@ -27,5 +27,5 @@ python_venv { '/opt/apps/myapp/.venv':
     'uvicorn[standard]==0.30.6',
     'gunicorn==22.0.0',
   ],
-  uv_args              => ['--no-cache-dir'],
+  extra_args           => ['--no-cache-dir'],
 }

@@ -103,17 +103,17 @@ Puppet::Type.newtype(:python_venv) do
     defaultto []
   end
 
-  newparam(:uv_args) do
-    desc 'Additional arguments to pass to uv pip install commands.'
+  newparam(:extra_args) do
+    desc 'Additional arguments to pass to install commands (pip install or uv pip install).'
 
     validate do |value|
       unless value.is_a?(Array)
-        raise ArgumentError, "uv_args must be an array, got: #{value.class}"
+        raise ArgumentError, "extra_args must be an array, got: #{value.class}"
       end
 
       value.each do |arg|
         unless arg.is_a?(String)
-          raise ArgumentError, "Each uv_arg must be a string, got: #{arg.inspect}"
+          raise ArgumentError, "Each extra_arg must be a string, got: #{arg.inspect}"
         end
       end
     end
