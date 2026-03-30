@@ -203,12 +203,11 @@ Puppet::Type.type(:python_venv).provide(:uv) do
     end
 
     # Check for invalid venv with zero-sized files
-    unless venv_files_valid?
-      Puppet.err("Python venv creation failed: #{venv_path} contains invalid zero-sized files")
-      # Cleanup the invalid venv
-      Puppet::FileSystem.rmtree(venv_path) if File.exist?(venv_path)
-      raise Puppet::Error, "Failed to create valid virtual environment at #{venv_path}: venv files are zero-sized (corrupted creation)"
-    end
+    return if venv_files_valid?
+    Puppet.err("Python venv creation failed: #{venv_path} contains invalid zero-sized files")
+    # Cleanup the invalid venv
+    Puppet::FileSystem.rmtree(venv_path) if File.exist?(venv_path)
+    raise Puppet::Error, "Failed to create valid virtual environment at #{venv_path}: venv files are zero-sized (corrupted creation)"
   end
 
   def requirements?

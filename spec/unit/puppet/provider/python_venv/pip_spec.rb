@@ -17,6 +17,10 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
   let(:provider) { described_class.new(resource) }
 
   describe '#exists?' do
+    before(:each) do
+      allow(File).to receive(:directory?).and_call_original
+    end
+
     context 'when venv exists and is functional' do
       before(:each) do
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
