@@ -103,17 +103,35 @@ Puppet::Type.newtype(:python_venv) do
     defaultto []
   end
 
+  newparam(:pip_args) do
+    desc 'Deprecated alias for extra_args. Additional arguments to pass to install commands.'
+
+    validate do |value|
+      unless value.is_a?(Array)
+        raise ArgumentError, "Pip args must be an array, got: #{value.class}"
+      end
+
+      value.each do |arg|
+        unless arg.is_a?(String)
+          raise ArgumentError, "Each pip arg must be a string, got: #{arg.inspect}"
+        end
+      end
+    end
+
+    defaultto []
+  end
+
   newparam(:extra_args) do
     desc 'Additional arguments to pass to install commands (pip install or uv pip install).'
 
     validate do |value|
       unless value.is_a?(Array)
-        raise ArgumentError, "extra_args must be an array, got: #{value.class}"
+        raise ArgumentError, "Extra args must be an array, got: #{value.class}"
       end
 
       value.each do |arg|
         unless arg.is_a?(String)
-          raise ArgumentError, "Each extra_arg must be a string, got: #{arg.inspect}"
+          raise ArgumentError, "Each extra arg must be a string, got: #{arg.inspect}"
         end
       end
     end

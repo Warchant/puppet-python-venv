@@ -422,7 +422,7 @@ Puppet::Type.type(:python_venv).provide(:pip) do
   def install_requirements_file(requirements_file)
     cmd = [pip_path, 'install']
     cmd << '-r' << requirements_file
-    cmd += resource[:extra_args]
+    cmd += resource[:pip_args] + resource[:extra_args]
 
     Puppet.info("Executing pip install: #{cmd.join(' ')}")
 

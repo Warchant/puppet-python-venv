@@ -41,7 +41,7 @@ In practice, your manifest is the source of truth for the venv content.
 - `system_site_packages`: `true`/`false` (default `false`). if `true` - passes `--system-site-packages` to `uv venv`.
 - `requirements`: array of requirement specs (for example `['httpx==0.27.0']`).
 - `requirements_files`: array of absolute paths to requirements files.
-- `extra_args`: extra args appended to install commands (`pip install` or `uv pip install`).
+- `pip_args`: extra args appended to install commands (`pip install` or `uv pip install`).
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.
 
@@ -80,7 +80,7 @@ python_venv { '/opt/apps/myapp/.venv':
     'gunicorn==22.0.0',
     'uvicorn[standard]==0.30.6',
   ],
-  extra_args           => ['--no-cache-dir'],
+  pip_args             => ['--no-cache-dir'],
 }
 ```
 
