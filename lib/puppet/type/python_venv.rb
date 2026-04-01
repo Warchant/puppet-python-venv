@@ -2,7 +2,11 @@
 
 Puppet::Type.newtype(:python_venv) do
   @doc = <<-DOC
-    Manages Python virtual environments using uv.
+    Manages Python virtual environments.
+
+    By default, this type uses the uv-based provider to create and manage
+    virtual environments when uv is available, but a :pip provider remains
+    supported for environments where uv cannot be used.
 
     This type creates a Python virtual environment and installs specified
     dependencies atomically. It supports both requirements.txt files and

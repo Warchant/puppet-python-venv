@@ -4,7 +4,7 @@
 
 Manage Python virtual environments with deterministic dependency state in Puppet using [`uv`](https://github.com/astral-sh/uv).
 
-> **Prerequisite:** `uv` must be installed system-wide on the managed node.
+> **Prerequisite (for the :uv provider / default behavior):** `uv` must be installed system-wide on the managed node. If you explicitly select the `:pip` provider, `uv` is not required.
 
 > To activate this badge, enable Codecov for this repository. If the repo is private,
 > add `CODECOV_TOKEN` in repository secrets.
