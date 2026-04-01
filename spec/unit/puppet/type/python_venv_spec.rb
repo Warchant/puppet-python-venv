@@ -38,6 +38,14 @@ describe Puppet::Type.type(:python_venv) do
     it 'has an extra_args parameter' do
       expect(type.attrtype(:extra_args)).to eq(:param)
     end
+
+    it 'has an owner property' do
+      expect(type.attrtype(:owner)).to eq(:property)
+    end
+
+    it 'has a group property' do
+      expect(type.attrtype(:group)).to eq(:property)
+    end
   end
 
   describe 'when validating parameter values' do
@@ -135,6 +143,26 @@ describe Puppet::Type.type(:python_venv) do
       it 'has a default empty array' do
         resource = type.new(path: '/opt/venv')
         expect(resource[:requirements_files]).to eq([])
+      end
+    end
+
+    context 'owner property' do
+      it 'accepts a valid username string' do
+        expect { type.new(path: '/opt/venv', owner: 'myuser') }.not_to raise_error
+      end
+
+      it 'rejects empty strings' do
+        expect { type.new(path: '/opt/venv', owner: '') }.to raise_error(Puppet::Error, %r{must be a non-empty string})
+      end
+    end
+
+    context 'group property' do
+      it 'accepts a valid group name string' do
+        expect { type.new(path: '/opt/venv', group: 'mygroup') }.not_to raise_error
+      end
+
+      it 'rejects empty strings' do
+        expect { type.new(path: '/opt/venv', group: '') }.to raise_error(Puppet::Error, %r{must be a non-empty string})
       end
     end
 
