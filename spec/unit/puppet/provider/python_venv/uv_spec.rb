@@ -226,7 +226,9 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     context 'when venv appears created but is not functional' do
       before(:each) do
         allow(provider).to receive(:execute)
+        allow(File).to receive(:directory?).and_call_original
         allow(File).to receive(:directory?).with('/opt/test-venv').and_return(false)
+        allow(provider).to receive(:create_venv).and_call_original
       end
 
       it 'raises a Puppet::Error' do
@@ -238,6 +240,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
   describe '#create_venv' do
     before(:each) do
       allow(provider).to receive(:execute)
+      allow(File).to receive(:directory?).and_call_original
       allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
       allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
       allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
