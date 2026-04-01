@@ -4,6 +4,8 @@ require 'json'
 require 'tempfile'
 require 'digest'
 require 'set'
+require 'etc'
+require 'find'
 
 Puppet::Type.type(:python_venv).provide(:uv) do
   desc 'Manages Python virtual environments using uv.'
@@ -54,11 +56,42 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
   def create
     create_venv
+    apply_ownership
     sync_requirements if requirements?
   end
 
   def destroy
     Puppet::FileSystem.rmtree(venv_path) if File.exist?(venv_path)
+  end
+
+  # Returns the current owner of the venv root directory
+  def owner
+    return :absent unless File.exist?(venv_path)
+    uid = File.stat(venv_path).uid
+    Etc.getpwuid(uid).name
+  rescue ArgumentError
+    uid.to_s
+  end
+
+  # Sets ownership recursively across the venv directory tree
+  def owner=(value)
+    uid = Etc.getpwnam(value).uid
+    Find.find(venv_path) { |path| File.chown(uid, -1, path) }
+  end
+
+  # Returns the current group of the venv root directory
+  def group
+    return :absent unless File.exist?(venv_path)
+    gid = File.stat(venv_path).gid
+    Etc.getgrgid(gid).name
+  rescue ArgumentError
+    gid.to_s
+  end
+
+  # Sets group recursively across the venv directory tree
+  def group=(value)
+    gid = Etc.getgrnam(value).gid
+    Find.find(venv_path) { |path| File.chown(-1, gid, path) }
   end
 
   # Check if requirements are in sync (called by the property)
@@ -183,6 +216,17 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   end
 
   private
+
+  def apply_ownership
+    o = resource[:owner]
+    g = resource[:group]
+    return unless o || g
+
+    uid = o ? Etc.getpwnam(o).uid : -1
+    gid = g ? Etc.getgrnam(g).gid : -1
+
+    Find.find(venv_path) { |path| File.chown(uid, gid, path) }
+  end
 
   def create_venv
     cmd = [uv_cmd, 'venv', '--python', python_spec]

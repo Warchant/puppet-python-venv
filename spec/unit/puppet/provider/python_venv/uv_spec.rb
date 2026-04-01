@@ -185,10 +185,130 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     end
   end
 
+  describe '#owner' do
+    context 'when venv exists' do
+      before(:each) do
+        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
+        allow(File).to receive(:stat).with('/opt/test-venv').and_return(double(uid: 1001))
+        allow(Etc).to receive(:getpwuid).with(1001).and_return(double(name: 'myuser'))
+      end
+
+      it 'returns the owner name' do
+        expect(provider.owner).to eq('myuser')
+      end
+    end
+
+    context 'when venv does not exist' do
+      before(:each) do
+        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(false)
+      end
+
+      it 'returns :absent' do
+        expect(provider.owner).to eq(:absent)
+      end
+    end
+  end
+
+  describe '#owner=' do
+    it 'recursively chowns all files' do
+      allow(Etc).to receive(:getpwnam).with('newuser').and_return(double(uid: 1005))
+      allow(Find).to receive(:find).with('/opt/test-venv').and_yield('/opt/test-venv').and_yield('/opt/test-venv/bin/python')
+      expect(File).to receive(:chown).with(1005, -1, '/opt/test-venv')
+      expect(File).to receive(:chown).with(1005, -1, '/opt/test-venv/bin/python')
+      provider.send(:owner=, 'newuser')
+    end
+  end
+
+  describe '#group' do
+    context 'when venv exists' do
+      before(:each) do
+        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
+        allow(File).to receive(:stat).with('/opt/test-venv').and_return(double(gid: 1002))
+        allow(Etc).to receive(:getgrgid).with(1002).and_return(double(name: 'mygroup'))
+      end
+
+      it 'returns the group name' do
+        expect(provider.group).to eq('mygroup')
+      end
+    end
+
+    context 'when venv does not exist' do
+      before(:each) do
+        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(false)
+      end
+
+      it 'returns :absent' do
+        expect(provider.group).to eq(:absent)
+      end
+    end
+  end
+
+  describe '#group=' do
+    it 'recursively chowns all files' do
+      allow(Etc).to receive(:getgrnam).with('newgroup').and_return(double(gid: 1010))
+      allow(Find).to receive(:find).with('/opt/test-venv').and_yield('/opt/test-venv').and_yield('/opt/test-venv/bin/python')
+      expect(File).to receive(:chown).with(-1, 1010, '/opt/test-venv')
+      expect(File).to receive(:chown).with(-1, 1010, '/opt/test-venv/bin/python')
+      provider.send(:group=, 'newgroup')
+    end
+  end
+
+  describe '#apply_ownership' do
+    context 'when owner and group are set' do
+      before(:each) do
+        resource[:owner] = 'myuser'
+        resource[:group] = 'mygroup'
+        allow(Etc).to receive(:getpwnam).with('myuser').and_return(double(uid: 1001))
+        allow(Etc).to receive(:getgrnam).with('mygroup').and_return(double(gid: 1002))
+        allow(Find).to receive(:find).with('/opt/test-venv').and_yield('/opt/test-venv').and_yield('/opt/test-venv/bin/python')
+      end
+
+      it 'chowns all files under venv_path' do
+        expect(File).to receive(:chown).with(1001, 1002, '/opt/test-venv')
+        expect(File).to receive(:chown).with(1001, 1002, '/opt/test-venv/bin/python')
+        provider.send(:apply_ownership)
+      end
+    end
+
+    context 'when only owner is set' do
+      before(:each) do
+        resource[:owner] = 'myuser'
+        allow(Etc).to receive(:getpwnam).with('myuser').and_return(double(uid: 1001))
+        allow(Find).to receive(:find).with('/opt/test-venv').and_yield('/opt/test-venv')
+      end
+
+      it 'chowns with uid and -1 for gid' do
+        expect(File).to receive(:chown).with(1001, -1, '/opt/test-venv')
+        provider.send(:apply_ownership)
+      end
+    end
+
+    context 'when only group is set' do
+      before(:each) do
+        resource[:group] = 'mygroup'
+        allow(Etc).to receive(:getgrnam).with('mygroup').and_return(double(gid: 1002))
+        allow(Find).to receive(:find).with('/opt/test-venv').and_yield('/opt/test-venv')
+      end
+
+      it 'chowns with -1 for uid and gid' do
+        expect(File).to receive(:chown).with(-1, 1002, '/opt/test-venv')
+        provider.send(:apply_ownership)
+      end
+    end
+
+    context 'when neither owner nor group is set' do
+      it 'does nothing' do
+        expect(Find).not_to receive(:find)
+        provider.send(:apply_ownership)
+      end
+    end
+  end
+
   describe '#create' do
     before(:each) do
       allow(provider).to receive(:execute)
       allow(provider).to receive(:create_venv)
+      allow(provider).to receive(:apply_ownership)
       allow(provider).to receive(:sync_requirements)
       allow(provider).to receive(:requirements?).and_return(true)
     end

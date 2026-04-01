@@ -38,6 +38,8 @@ In practice, your manifest is the source of truth for the venv content.
 - `system_site_packages`: `true`/`false` (default `false`). if `true` - passes `--system-site-packages` to `uv venv`.
 - `requirements`: array of requirement specs (for example `['httpx==0.27.0']`).
 - `requirements_files`: array of absolute paths to requirements files.
+- `owner`: user that should own the virtual environment directory tree. When set, Puppet checks and corrects ownership on every run.
+- `group`: group that should own the virtual environment directory tree. When set, Puppet checks and corrects ownership on every run.
 - `pip_args`: extra args appended to install commands (`pip install` or `uv pip install`).
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.

@@ -107,6 +107,42 @@ Puppet::Type.newtype(:python_venv) do
     defaultto []
   end
 
+  newproperty(:owner) do
+    desc 'The user that should own the virtual environment directory tree. Accepts a username string.'
+
+    validate do |value|
+      unless value.is_a?(String) && !value.empty?
+        raise ArgumentError, "Owner must be a non-empty string, got: #{value.inspect}"
+      end
+    end
+
+    def retrieve
+      provider.owner
+    end
+
+    def insync?(is)
+      is == should
+    end
+  end
+
+  newproperty(:group) do
+    desc 'The group that should own the virtual environment directory tree. Accepts a group name string.'
+
+    validate do |value|
+      unless value.is_a?(String) && !value.empty?
+        raise ArgumentError, "Group must be a non-empty string, got: #{value.inspect}"
+      end
+    end
+
+    def retrieve
+      provider.group
+    end
+
+    def insync?(is)
+      is == should
+    end
+  end
+
   newparam(:pip_args) do
     desc 'Deprecated alias for extra_args. Additional arguments to pass to install commands.'
 
