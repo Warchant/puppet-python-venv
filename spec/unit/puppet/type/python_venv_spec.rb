@@ -34,6 +34,10 @@ describe Puppet::Type.type(:python_venv) do
     it 'has a pip_args parameter' do
       expect(type.attrtype(:pip_args)).to eq(:param)
     end
+
+    it 'has an extra_args parameter' do
+      expect(type.attrtype(:extra_args)).to eq(:param)
+    end
   end
 
   describe 'when validating parameter values' do
