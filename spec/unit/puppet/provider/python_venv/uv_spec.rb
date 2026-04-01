@@ -225,9 +225,8 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
     context 'when venv appears created but is not functional' do
       before(:each) do
-        allow(provider).to receive(:create_venv).and_call_original
         allow(provider).to receive(:execute)
-        allow(provider).to receive(:exists?).and_return(false)
+        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(false)
       end
 
       it 'raises a Puppet::Error' do
@@ -577,8 +576,7 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
     before(:each) do
       allow(venv_exists_provider).to receive(:uv_cmd).and_return('/usr/bin/uv')
 
-      # Mock that venv exists
-      allow(venv_exists_provider).to receive(:exists?).and_return(true)
+      # Mock that venv does not exist
       allow(venv_exists_provider).to receive(:exists?).and_return(false)
 
       # Mock that state file does NOT exist (important!)
@@ -595,9 +593,6 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
 
       # Mock individual_requirements_hash
       allow(venv_exists_provider).to receive(:individual_requirements_hash).and_return('reqhash456')
-
-      # Mock exists? method
-      allow(provider).to receive(:exists?).and_return(true)
     end
 
     it 'triggers full reinstallation when state file is missing' do
