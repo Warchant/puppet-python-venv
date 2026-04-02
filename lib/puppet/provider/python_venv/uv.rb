@@ -159,7 +159,9 @@ Puppet::Type.type(:python_venv).provide(:uv) do
 
     begin
       output = execute([uv_cmd, 'pip', 'freeze', '--python', python_venv_path], failonfail: true)
-      hash = Digest::SHA256.hexdigest(output)
+      # Sort lines to ensure deterministic hash regardless of pip freeze ordering
+      normalized = output.lines.map(&:strip).reject(&:empty?).sort.join("\n")
+      hash = Digest::SHA256.hexdigest(normalized)
       Puppet.debug("uv pip freeze hash: #{hash[0..7]}...")
       hash
     rescue Puppet::ExecutionFailure => e
@@ -446,15 +448,15 @@ Puppet::Type.type(:python_venv).provide(:uv) do
   end
 
   def install_requirements_file(requirements_file)
-    cmd = [uv_cmd, 'pip', 'install', '-r', requirements_file, '--python', python_venv_path]
+    cmd = [uv_cmd, 'pip', 'sync', requirements_file, '--python', python_venv_path]
     cmd += resource[:pip_args] + resource[:extra_args]
 
-    Puppet.info("Executing uv pip install: #{cmd.join(' ')}")
+    Puppet.info("Executing uv pip sync: #{cmd.join(' ')}")
 
     begin
       output = execute(cmd, failonfail: true, combine: true)
-      Puppet.info("uv pip install completed successfully for #{requirements_file}")
-      Puppet.debug("uv pip install output: #{output}")
+      Puppet.info("uv pip sync completed successfully for #{requirements_file}")
+      Puppet.debug("uv pip sync output: #{output}")
     rescue Puppet::ExecutionFailure => e
       raise Puppet::Error, "Failed to install requirements from #{requirements_file} in #{venv_path}: #{e.message}"
     end

@@ -632,6 +632,8 @@ RSpec/SubjectDeclaration:
   Enabled: false
 RSpec/VerifiedDoubleReference:
   Enabled: false
+RSpec/VerifiedDoubles:
+  Enabled: false
 Security/CompoundHash:
   Enabled: false
 Security/IoMethods:

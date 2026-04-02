@@ -504,16 +504,16 @@ describe Puppet::Type.type(:python_venv).provider(:uv) do
         allow(provider).to receive(:execute)
       end
 
-      it 'installs requirements with uv pip and uv_args' do
+      it 'syncs requirements with uv pip and uv_args' do
         expect(provider).to receive(:execute).with(
-          ['/usr/bin/uv', 'pip', 'install', '-r', '/tmp/requirements.txt', '--python', '/opt/test-venv/bin/python', '--no-cache-dir'],
+          ['/usr/bin/uv', 'pip', 'sync', '/tmp/requirements.txt', '--python', '/opt/test-venv/bin/python', '--no-cache-dir'],
           hash_including(failonfail: true, combine: true),
         )
 
         provider.send(:install_requirements_file, '/tmp/requirements.txt')
       end
 
-      context 'when uv pip install fails' do
+      context 'when uv pip sync fails' do
         before(:each) do
           allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'install failed')
         end
