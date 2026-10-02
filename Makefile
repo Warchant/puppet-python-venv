@@ -1,3 +1,5 @@
+PUPPET_VERSION ?= 7
+
 .PHONY: help
 help:
 	@echo "Available targets:"
@@ -15,7 +17,7 @@ check: lint validate test
 
 .PHONY: test
 test:
-	pdk test unit --puppet-version=7
+	pdk test unit --puppet-version=$(PUPPET_VERSION)
 
 .PHONY: deps
 deps:
@@ -38,7 +40,7 @@ lint:
 
 .PHONY: validate
 validate:
-	pdk validate --puppet-version=7 -a
+	pdk validate --puppet-version=$(PUPPET_VERSION) -a
 
 .PHONY: clean
 clean:

@@ -17,7 +17,7 @@ This module provides the custom resource type `python_venv`, which:
 
 ## Compatibility
 
-- Puppet: 7.x (`>= 7.24 < 9.0.0`)
+- Puppet: 7.x and 8.x (`>= 7.24 < 9.0.0`); CI tests both
 - OS: Linux only
 - Scope: Linux distro-independent (no distro-specific logic in the resource type)
 
