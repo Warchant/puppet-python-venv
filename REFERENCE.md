@@ -124,6 +124,6 @@ always checked by sha256 against each package's RECORD before the venv is commit
 * `hash`: recompute the sha256 of every file. Catches any content change, but reads
   the whole venv on every run.
 * `none`: only compare the declared inputs with the committed state.
-Any failed check rebuilds the venv from scratch.
+Any failed check builds a new venv and switches to it.
 
 Default value: `size`

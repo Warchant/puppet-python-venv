@@ -30,19 +30,33 @@ A `python_venv` reported as in sync means: the venv was built from the declared 
 every installed file was flushed to disk and verified against its package's `RECORD`
 (sha256), and it still passes the per-run check.
 
-How a venv is built (on first run, on any change, and on any failed check):
+The venv path (e.g. `/opt/app/.venv`) is a symlink to a build in a sibling directory
+(`/opt/app/.venv.builds/<id>/`). How a venv is built (on first run, on any change, and on
+any failed check):
 
-1. The commit marker (`<venv>/.requirements_state`) is deleted durably.
-2. The venv is deleted and recreated with `python -m venv`; pip is upgraded (best effort).
-3. All requirements are installed with one `pip install -r ... -r ...`.
-4. Everything is flushed to disk (`sync -f <venv>`, or `sync`).
-5. Every file listed in every `RECORD` is hashed and compared.
-6. The marker is written atomically (temp file, fsync, rename, fsync directory).
+1. A new venv is created in a new build directory with `python -m venv`; pip is
+   upgraded (best effort). The active venv is not touched.
+2. All requirements are installed with one `pip install -r ... -r ...`.
+3. Everything is flushed to disk (`sync -f <build>`, or `sync`).
+4. Every file listed in every `RECORD` is hashed and compared.
+5. The commit marker (`.requirements_state`) is written atomically (temp file, fsync,
+   rename, fsync directory).
+6. The venv path is switched to the new build with one `rename` of a symlink, and the
+   parent directory is fsynced.
+7. Old builds are deleted.
 
-If any step fails, the build is retried once with `--no-cache-dir` (in case a cached
-wheel is corrupted); if it fails again, the resource fails and no marker is written,
-so the next run tries again. A power loss at any point leaves the venv without a marker,
-which also triggers a rebuild.
+Applications using the venv path see either the old venv or the new one, never a partial
+one. If any step fails, the build is retried once with `--no-cache-dir` (in case a cached
+wheel is corrupted); if it fails again, the failed build is deleted, the resource fails,
+and **the previous venv stays active**. The next run tries again. A power loss at any point
+leaves the previous venv active; the unfinished build is deleted on the next run.
+
+A rebuild needs disk space for two venvs. Processes already running keep the modules
+they imported; restart them to use the new venv, for example with
+`notify => Service['myapp']` on the `python_venv` resource.
+
+Venvs created by 0.1.0 (a real directory at the venv path) are verified and kept in place;
+the first rebuild moves them out and replaces them with a symlink.
 
 On every run the marker is compared with the declared inputs and the interpreter, and
 the venv is checked according to `verify`:
@@ -55,9 +69,8 @@ the venv is checked according to `verify`:
 
 Packages installed, removed or changed outside Puppet are detected with `size` and `hash`.
 
-> The venv is unusable while it is rebuilt, and stays unusable if the rebuild fails
-> (for example without network). Bytecode created at runtime (`__pycache__` files not
-> listed in `RECORD`) is not verified.
+> Bytecode created at runtime (`__pycache__` files not listed in `RECORD`) is not verified.
+> Use the venv path, not a build directory: builds are deleted when replaced.
 
 In practice, your manifest is the source of truth for the venv content.
 

@@ -4,6 +4,7 @@ require 'json'
 require 'digest'
 require 'set'
 require 'fileutils'
+require 'securerandom'
 
 Puppet::Type.type(:python_venv).provide(:pip) do
   desc <<-DESC
@@ -12,10 +13,12 @@ Puppet::Type.type(:python_venv).provide(:pip) do
     Correctness model:
     * The venv is "done" only when the commit marker (.requirements_state) exists,
       matches the declared inputs, and verification passes.
-    * Any change or any failed check triggers a rebuild from scratch: the marker is
-      removed first, the venv is deleted and recreated, requirements are installed,
-      data is flushed to disk, every installed file is verified against its RECORD
-      sha256, and only then the marker is written atomically.
+    * The path is a symlink to a build in .<name>.builds/. Any change or failed check
+      builds a new venv there: requirements are installed, data is flushed to disk,
+      every installed file is verified against its RECORD sha256, the marker is
+      written atomically, and only then the symlink is switched with one rename.
+      Applications see the old venv or the new one, never a partial one; a failed
+      build leaves the old venv in place.
     * Every check fails closed: an error while checking is treated as "out of sync".
   DESC
 
@@ -145,24 +148,36 @@ sys.exit(0 if result['ok'] else 1)
     resource[:python_executable] || self.class.default_python_cmd
   end
 
+  # The stable path applications use: a symlink to the active build
+  # (or, for venvs created by 0.1.0, the venv directory itself)
   def venv_path
     resource[:path]
   end
 
+  # The venv being worked on: the build directory during a rebuild, otherwise venv_path
+  def venv_dir
+    @build_dir || venv_path
+  end
+
+  # Builds live next to venv_path, so switching the symlink is a same-filesystem rename
+  def builds_dir
+    File.join(File.dirname(venv_path), ".#{File.basename(venv_path)}.builds")
+  end
+
   def pip_path
-    File.join(venv_path, 'bin', 'pip')
+    File.join(venv_dir, 'bin', 'pip')
   end
 
   def python_venv_path
-    File.join(venv_path, 'bin', 'python')
+    File.join(venv_dir, 'bin', 'python')
   end
 
   def activate_path
-    File.join(venv_path, 'bin', 'activate')
+    File.join(venv_dir, 'bin', 'activate')
   end
 
   def pyvenv_cfg_path
-    File.join(venv_path, 'pyvenv.cfg')
+    File.join(venv_dir, 'pyvenv.cfg')
   end
 
   # Check that core venv files (not covered by any RECORD) are present and not zero-sized.
@@ -171,7 +186,7 @@ sys.exit(0 if result['ok'] else 1)
     [python_venv_path, pip_path, activate_path, pyvenv_cfg_path].each do |f|
       next if File.exist?(f) && File.size(f) > 0
 
-      Puppet.warning("Invalid venv detected at #{venv_path}: #{f} is missing or zero-sized")
+      Puppet.warning("Invalid venv detected at #{venv_dir}: #{f} is missing or zero-sized")
       return false
     end
     true
@@ -186,7 +201,9 @@ sys.exit(0 if result['ok'] else 1)
   end
 
   def destroy
-    remove_venv_dir
+    remove_path(venv_path)
+    fsync_dir(File.dirname(venv_path)) if File.directory?(File.dirname(venv_path))
+    remove_path(builds_dir)
   end
 
   # Check if the venv is committed, matches the declared inputs and passes verification
@@ -208,12 +225,12 @@ sys.exit(0 if result['ok'] else 1)
 
   # Path to store requirements state (the commit marker)
   def requirements_state_file
-    File.join(venv_path, '.requirements_state')
+    File.join(venv_dir, '.requirements_state')
   end
 
   # Path to store individual requirements as a file
   def individual_requirements_file
-    File.join(venv_path, '.individual_requirements.txt')
+    File.join(venv_dir, '.individual_requirements.txt')
   end
 
   # Load the commit marker. Returns nil when it is missing or unreadable.
@@ -286,7 +303,7 @@ sys.exit(0 if result['ok'] else 1)
 
   # Run the RECORD verifier with the venv interpreter. Never raises; returns a Hash with 'ok'.
   def run_verifier(mode)
-    output = execute([python_venv_path, '-I', '-c', self.class::VERIFY_SCRIPT, mode, venv_path],
+    output = execute([python_venv_path, '-I', '-c', self.class::VERIFY_SCRIPT, mode, venv_dir],
                      failonfail: false, combine: false)
     result = begin
       JSON.parse(output.to_s)
@@ -375,47 +392,119 @@ sys.exit(0 if result['ok'] else 1)
     true
   end
 
-  # Delete and recreate the venv from scratch. A failed first attempt is retried once
-  # without the pip cache, in case a cached wheel is corrupted.
+  # Build a new venv next to the active one and switch to it atomically. The active
+  # venv is never modified: if the build fails, it stays in place and the run fails.
+  # A failed first attempt is retried once without the pip cache, in case a cached
+  # wheel is corrupted.
   def rebuild(reason)
-    # Computed before anything is deleted, so invalid inputs never destroy a venv
+    # Computed before anything is touched, so invalid inputs never affect the venv
     expected = calculate_expected_state
     base_python = resolved_base_python
 
-    Puppet.notice("Python venv #{venv_path}: rebuilding from scratch (#{reason})")
-    begin
-      build(expected, base_python, use_cache: true)
-    rescue Puppet::Error => e
-      Puppet.warning("Python venv #{venv_path}: build failed (#{e.message}); retrying without pip cache")
-      build(expected, base_python, use_cache: false)
-    end
+    Puppet.notice("Python venv #{venv_path}: building a new venv (#{reason})")
+    remove_stale_builds
+    build_dir = build_with_retry(expected, base_python)
+
+    switch_to(build_dir)
     @out_of_sync_reason = nil
-    Puppet.info("Python venv #{venv_path}: built, flushed to disk and verified")
+    Puppet.info("Python venv #{venv_path}: switched to #{build_dir} (built, flushed to disk and verified)")
+    remove_stale_builds
   end
 
+  def build_with_retry(expected, base_python)
+    build(expected, base_python, use_cache: true)
+  rescue Puppet::Error => e
+    Puppet.warning("Python venv #{venv_path}: build failed (#{e.message}); retrying without pip cache")
+    build(expected, base_python, use_cache: false)
+  end
+
+  # Build and commit a complete venv in a new build directory; returns its path.
+  # The build directory is removed if anything fails.
   def build(expected, base_python, use_cache:)
-    remove_state_marker
-    remove_venv_dir
+    dir = new_build_dir(expected)
+    @build_dir = dir
 
     create_venv
     install_all_requirements(use_cache) if requirements?
     flush_to_disk
 
     result = run_verifier('hash')
-    raise Puppet::Error, "Verification of #{venv_path} failed after install: #{format_errors(result)}" unless result['ok']
+    raise Puppet::Error, "Verification of #{dir} failed after install: #{format_errors(result)}" unless result['ok']
 
     write_state(expected, result, base_python)
+    dir
+  rescue StandardError
+    begin
+      remove_path(dir) if dir
+    rescue StandardError => e
+      Puppet.warning("Python venv #{venv_path}: could not remove failed build #{dir}: #{e.message}")
+    end
+    raise
+  ensure
+    @build_dir = nil
   end
 
-  # Raises if anything cannot be removed (unlike rm_rf, which ignores errors)
-  def remove_venv_dir
-    FileUtils.rm_r(venv_path) if File.exist?(venv_path) || File.symlink?(venv_path)
+  # A unique, not yet existing build directory (unique so that a corrupted active
+  # build can be replaced without touching it)
+  def new_build_dir(expected)
+    FileUtils.mkdir_p(builds_dir)
+    inputs = Digest::SHA256.hexdigest(JSON.generate(expected))[0, 12]
+    File.join(builds_dir, "#{inputs}-#{Time.now.utc.strftime('%Y%m%dT%H%M%S')}-#{SecureRandom.hex(4)}")
+  end
+
+  # Atomically point venv_path at build_dir: rename a new symlink over the old one.
+  # A real directory at venv_path (a venv created by 0.1.0) is moved into builds_dir
+  # just before, and deleted afterwards.
+  def switch_to(build_dir)
+    parent = File.dirname(venv_path)
+    target = File.join(File.basename(builds_dir), File.basename(build_dir))
+    link = File.join(parent, ".#{File.basename(venv_path)}.link.#{Process.pid}")
+
+    File.delete(link) if File.symlink?(link)
+    File.symlink(target, link)
+    if File.directory?(venv_path) && !File.symlink?(venv_path)
+      File.rename(venv_path, File.join(builds_dir, "retired-#{File.basename(build_dir)}"))
+    end
+    File.rename(link, venv_path)
+    fsync_dir(parent)
+  ensure
+    File.delete(link) if link && File.symlink?(link)
+  end
+
+  # The build venv_path points to, or nil
+  def active_build
+    return nil unless File.symlink?(venv_path)
+
+    target = File.expand_path(File.readlink(venv_path), File.dirname(venv_path))
+    (File.dirname(target) == builds_dir) ? File.basename(target) : nil
+  end
+
+  # Remove every build except the active one (failed or interrupted builds, previous builds)
+  def remove_stale_builds
+    return unless File.directory?(builds_dir)
+
+    keep = active_build
+    Dir.children(builds_dir).each do |entry|
+      next if entry == keep
+
+      begin
+        remove_path(File.join(builds_dir, entry))
+      rescue StandardError => e
+        Puppet.warning("Python venv #{venv_path}: could not remove old build #{entry}: #{e.message}")
+      end
+    end
+  end
+
+  # Raises if anything cannot be removed (unlike rm_rf, which ignores errors).
+  # A symlink is removed itself, not its target.
+  def remove_path(path)
+    FileUtils.rm_r(path) if File.exist?(path) || File.symlink?(path)
   end
 
   def create_venv
     cmd = [python_cmd, '-m', 'venv']
     cmd << '--system-site-packages' if resource[:system_site_packages]
-    cmd << venv_path
+    cmd << venv_dir
 
     Puppet.info("Creating Python virtual environment at #{venv_path}")
 
@@ -426,7 +515,7 @@ sys.exit(0 if result['ok'] else 1)
     end
 
     # Verify venv was created successfully
-    unless File.directory?(venv_path) && File.executable?(python_venv_path) && File.executable?(pip_path)
+    unless File.directory?(venv_dir) && File.executable?(python_venv_path) && File.executable?(pip_path)
       raise Puppet::Error, "Virtual environment creation appeared to succeed but #{venv_path} is not functional"
     end
 
@@ -477,7 +566,7 @@ sys.exit(0 if result['ok'] else 1)
   # Wait until everything written so far reaches the disk.
   # `sync -f` (syncfs) limits it to the venv's filesystem; plain `sync` is the fallback.
   def flush_to_disk
-    execute(['sync', '-f', venv_path], failonfail: true, combine: true)
+    execute(['sync', '-f', venv_dir], failonfail: true, combine: true)
   rescue Puppet::ExecutionFailure
     begin
       execute(['sync'], failonfail: true, combine: true)
@@ -500,14 +589,6 @@ sys.exit(0 if result['ok'] else 1)
     }
     write_file_durably(requirements_state_file, JSON.pretty_generate(state) + "\n")
     Puppet.debug("Saved requirements state: #{state.inspect}")
-  end
-
-  # Remove the commit marker durably before the venv is modified
-  def remove_state_marker
-    return unless File.exist?(requirements_state_file)
-
-    File.delete(requirements_state_file)
-    fsync_dir(venv_path)
   end
 
   # Write to a temp file, fsync it, rename over the target, fsync the directory
