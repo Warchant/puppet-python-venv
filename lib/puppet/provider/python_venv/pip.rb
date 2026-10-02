@@ -409,7 +409,7 @@ sys.exit(0 if result['ok'] else 1)
 
   # Raises if anything cannot be removed (unlike rm_rf, which ignores errors)
   def remove_venv_dir
-    FileUtils.rm_r(venv_path, secure: true) if File.exist?(venv_path) || File.symlink?(venv_path)
+    FileUtils.rm_r(venv_path) if File.exist?(venv_path) || File.symlink?(venv_path)
   end
 
   def create_venv

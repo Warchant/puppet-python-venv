@@ -12,6 +12,7 @@ VENV="$WORK/venv"
 REQ="$WORK/requirements.txt"
 LOG="$WORK/puppet.log"
 mkdir -p "$WORK/modules"
+chmod 777 "$WORK" # rebuilds must work under a world-writable parent
 ln -s "$MODULE_DIR" "$WORK/modules/puppetvenv"
 trap 'rm -rf "$WORK"' EXIT
 
