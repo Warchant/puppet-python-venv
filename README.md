@@ -17,7 +17,10 @@ This module provides the custom resource type `python_venv`, which:
 
 ## Compatibility
 
-- Puppet: 7.x and 8.x (`>= 7.24 < 9.0.0`); CI tests both
+- Puppet: 7.x and 8.x (`>= 7.24 < 9.0.0`)
+- Ruby: 3.1 and 3.2. CI tests Puppet 7 on Ruby 3.1.5 and Puppet 8 on Ruby 3.2.
+  Ruby 4.0 is not supported: Puppet 8 does not install on it (facter requires Ruby < 4.0).
+- Python: 3.9 or newer on the managed node (CI tests 3.9)
 - OS: Linux only
 - Scope: Linux distro-independent (no distro-specific logic in the resource type)
 
