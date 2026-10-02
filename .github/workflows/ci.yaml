@@ -6,12 +6,18 @@ on:
 
 jobs:
   ci:
-    name: Lint, Build, Test (Puppet ${{ matrix.puppet }})
+    name: Lint, Build, Test (Puppet ${{ matrix.puppet }}, Ruby ${{ matrix.ruby }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        puppet: ['7', '8']
+        include:
+          # Ruby as on the devices
+          - puppet: '7'
+            ruby: '3.1.5'
+          # Ruby shipped with the puppet-agent 8 package
+          - puppet: '8'
+            ruby: '3.2'
     env:
       PUPPET_GEM_VERSION: '~> ${{ matrix.puppet }}.0'
       PUPPET_VERSION: ${{ matrix.puppet }}
@@ -20,10 +26,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Ruby 3.1.5
+      - name: Set up Ruby ${{ matrix.ruby }}
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.1.5'
+          ruby-version: ${{ matrix.ruby }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
