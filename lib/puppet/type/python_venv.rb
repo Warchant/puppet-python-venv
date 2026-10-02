@@ -137,6 +137,30 @@ Puppet::Type.newtype(:python_venv) do
     defaultto :size
   end
 
+  newparam(:atomic) do
+    desc <<-DESC
+      How the venv is replaced when it has to be rebuilt.
+      * `false` (default): delete the venv and build it again in place. Needs disk space
+        for one venv; the venv is unavailable during the rebuild, and stays unavailable
+        if the rebuild fails, until a later run succeeds.
+      * `true`: build the new venv next to the active one and switch to it atomically
+        (`path` becomes a symlink to the active build). Applications see the old venv or
+        the new one, never a partial one, and a failed rebuild keeps the old venv. Needs
+        disk space for two venvs during a rebuild.
+      Changing it takes effect at the next rebuild.
+    DESC
+
+    newvalues(:true, :false, true, false)
+    defaultto :false
+
+    munge do |value|
+      case value
+      when :true, 'true', true then true
+      else false
+      end
+    end
+  end
+
   # Property to track whether the venv is committed and verified.
   # Syncing it rebuilds the venv; if that fails the change is reported as failed.
   newproperty(:requirements_state) do

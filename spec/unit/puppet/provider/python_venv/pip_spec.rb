@@ -259,7 +259,8 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
     end
   end
 
-  describe '#create (build aside, then switch)' do
+  describe '#create with atomic => true (build aside, then switch)' do
+    let(:resource_params) { super().merge(atomic: true) }
     let(:commands) { [] }
     let(:verifier_results) { [verifier_ok] }
     let(:verifier_modes) { [] }
@@ -454,6 +455,92 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
         expect(verifier_modes).to eq(['hash'])
         expect(File.exist?(state_file)).to be true
       end
+    end
+  end
+
+  describe '#create with atomic => false (default: rebuild in place)' do
+    let(:commands) { [] }
+    let(:verifier_results) { [verifier_ok] }
+    let(:builds) { File.join(tmpdir, '.venv.builds') }
+
+    def stub_execute(fail_on: nil)
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        commands << cmd
+        make_venv(cmd.last) if cmd[1..2] == ['-m', 'venv']
+        raise Puppet::ExecutionFailure, "#{cmd.join(' ')} failed" if fail_on&.call(cmd)
+        process_output('', 0)
+      end
+    end
+
+    before(:each) do
+      stub_execute
+      allow(provider).to receive(:run_verifier) { (verifier_results.length > 1) ? verifier_results.shift : verifier_results.first }
+    end
+
+    it 'builds at the venv path itself, without a builds directory' do
+      provider.create
+      expect(File.directory?(venv) && !File.symlink?(venv)).to be true
+      expect(commands.first).to eq(['/usr/bin/python3', '-m', 'venv', venv])
+      expect(commands).to include(['sync', '-f', venv])
+      expect(JSON.parse(File.read(state_file))['format']).to eq(2)
+      expect(Dir.exist?(builds)).to be false
+    end
+
+    it 'deletes the existing venv, including stale packages, before building' do
+      make_venv(venv)
+      File.write(File.join(venv, 'stale'), 'x')
+      write_committed_state
+      provider.create
+      expect(File.exist?(File.join(venv, 'stale'))).to be false
+      expect(File.exist?(state_file)).to be true
+    end
+
+    it 'removes the commit marker before deleting the venv' do
+      make_venv(venv)
+      write_committed_state
+      marker_gone_at_rm = nil
+      allow(FileUtils).to receive(:rm_r).and_wrap_original do |m, path, **opts|
+        marker_gone_at_rm = !File.exist?(state_file) if path == venv
+        m.call(path, **opts)
+      end
+      provider.create
+      expect(marker_gone_at_rm).to be true
+    end
+
+    it 'replaces a venv built with atomic => true and removes its builds' do
+      make_venv(File.join(builds, 'b1'))
+      File.symlink('.venv.builds/b1', venv)
+      provider.create
+      expect(File.directory?(venv) && !File.symlink?(venv)).to be true
+      expect(Dir.exist?(builds)).to be false
+    end
+
+    context 'when the first attempt fails verification' do
+      let(:verifier_results) { [{ 'ok' => false, 'errors' => ['six.py: sha256 mismatch'] }, verifier_ok] }
+
+      it 'rebuilds again without the pip cache and commits' do
+        provider.create
+        installs = commands.select { |c| c[1] == 'install' && c.include?('-r') }
+        expect(installs.map(&:last)).to eq(['https://mirror.example/simple', '--no-cache-dir'])
+        expect(File.exist?(state_file)).to be true
+      end
+    end
+
+    it 'fails and leaves no venv when the build keeps failing' do
+      make_venv(venv)
+      write_committed_state
+      File.write(req_file, "six==1.17.0\n")
+      stub_execute(fail_on: ->(cmd) { cmd.include?('-r') })
+      expect { provider.create }.to raise_error(Puppet::Error, %r{Failed to install requirements})
+      expect(File.exist?(venv)).to be false
+    end
+
+    it 'does not touch the venv when a requirements file is missing' do
+      make_venv(venv)
+      File.delete(req_file)
+      expect { provider.create }.to raise_error(Puppet::Error, %r{does not exist})
+      expect(File.exist?(File.join(venv, 'pyvenv.cfg'))).to be true
+      expect(commands).to be_empty
     end
   end
 
