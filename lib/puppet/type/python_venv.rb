@@ -121,8 +121,24 @@ Puppet::Type.newtype(:python_venv) do
     defaultto []
   end
 
-  # Property to track whether requirements are in sync
-  # This ensures the provider's flush method is called on every Puppet run
+  newparam(:verify) do
+    desc <<-DESC
+      How installed files are checked on every Puppet run (after an install they are
+      always checked by sha256 against each package's RECORD before the venv is committed).
+      * `size` (default): stat every file listed in RECORD and compare its size. Cheap;
+        catches missing, zero-sized and truncated files.
+      * `hash`: recompute the sha256 of every file. Catches any content change, but reads
+        the whole venv on every run.
+      * `none`: only compare the declared inputs with the committed state.
+      Any failed check rebuilds the venv from scratch.
+    DESC
+
+    newvalues(:size, :hash, :none)
+    defaultto :size
+  end
+
+  # Property to track whether the venv is committed and verified.
+  # Syncing it rebuilds the venv; if that fails the change is reported as failed.
   newproperty(:requirements_state) do
     desc 'Internal property to track requirements synchronization state. DO NOT SET MANUALLY.'
 
@@ -138,9 +154,8 @@ Puppet::Type.newtype(:python_venv) do
       is == :insync
     end
 
-    # This ensures sync_requirements is called when out of sync
     def sync
-      # The actual sync happens in the provider's flush method
+      provider.sync_requirements
       :insync
     end
   end
