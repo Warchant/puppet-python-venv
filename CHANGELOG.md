@@ -19,10 +19,17 @@ or disk corruption going undetected.
   fsync directory) and serves as the commit marker.
 - Any change or failed check rebuilds the venv from scratch. A failed build is retried
   once with `--no-cache-dir`, in case a cached wheel is corrupted.
+- New `atomic` parameter. `false` (default) rebuilds in place: one venv on disk.
+  `true` builds the new venv next to the active one (`.<name>.builds/<id>`) and
+  atomically switches the venv path (a symlink) to it: applications see the old venv or
+  the new one, never a partial one, and a failed build leaves the previous venv active,
+  at the cost of disk space for two venvs during a rebuild.
 - The interpreter (version and real path) and `system_site_packages` are recorded;
   a change triggers a rebuild.
 - Venvs created by 0.1.0 with matching requirements are adopted without reinstalling
   if they pass full verification, otherwise they are rebuilt.
+- Tested on Puppet 7 and 8 (CI matrix); the inline verifier is tested with a real
+  Python 3.9.
 
 **Bugfixes**
 
@@ -44,8 +51,9 @@ or disk corruption going undetected.
 - All requirements files are installed with a single `pip install -r ... -r ...`, so
   one resolver sees every requirement. Conflicting pins across files now fail instead
   of the last file winning.
-- Repairing a venv deletes it first: the venv is unusable during a rebuild, and stays
-  unusable (and reported as failed) if the rebuild fails, e.g. without network.
+- With the default `atomic => false`, a rebuild deletes the venv first: it is unusable
+  during the rebuild, and stays unusable (reported as failed) if the rebuild fails, e.g.
+  without network.
 - Each Puppet run executes the venv's Python once to verify the venv (instead of
   `pip freeze`).
 

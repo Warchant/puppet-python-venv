@@ -17,7 +17,10 @@ This module provides the custom resource type `python_venv`, which:
 
 ## Compatibility
 
-- Puppet: 7.x (`>= 7.24 < 9.0.0`)
+- Puppet: 7.x and 8.x (`>= 7.24 < 9.0.0`)
+- Ruby: 3.1 and 3.2. CI tests Puppet 7 on Ruby 3.1.5 and Puppet 8 on Ruby 3.2.
+  Ruby 4.0 is not supported: Puppet 8 does not install on it (facter requires Ruby < 4.0).
+- Python: 3.9 or newer on the managed node (CI tests 3.9)
 - OS: Linux only
 - Scope: Linux distro-independent (no distro-specific logic in the resource type)
 
@@ -29,17 +32,38 @@ every installed file was flushed to disk and verified against its package's `REC
 
 How a venv is built (on first run, on any change, and on any failed check):
 
-1. The commit marker (`<venv>/.requirements_state`) is deleted durably.
-2. The venv is deleted and recreated with `python -m venv`; pip is upgraded (best effort).
-3. All requirements are installed with one `pip install -r ... -r ...`.
-4. Everything is flushed to disk (`sync -f <venv>`, or `sync`).
-5. Every file listed in every `RECORD` is hashed and compared.
-6. The marker is written atomically (temp file, fsync, rename, fsync directory).
+1. A new venv is created with `python -m venv`; pip is upgraded (best effort).
+2. All requirements are installed with one `pip install -r ... -r ...`.
+3. Everything is flushed to disk (`sync -f <venv>`, or `sync`).
+4. Every file listed in every `RECORD` is hashed and compared.
+5. The commit marker (`.requirements_state`) is written atomically (temp file, fsync,
+   rename, fsync directory).
 
 If any step fails, the build is retried once with `--no-cache-dir` (in case a cached
-wheel is corrupted); if it fails again, the resource fails and no marker is written,
-so the next run tries again. A power loss at any point leaves the venv without a marker,
-which also triggers a rebuild.
+wheel is corrupted); if it fails again, the resource fails and no new marker is written,
+so the next run tries again.
+
+Where the new venv is built depends on `atomic`:
+
+| | `atomic => false` (default) | `atomic => true` |
+|---|---|---|
+| Rebuild | delete the venv (marker first), build at the venv path | build in `.<name>.builds/<id>/` next to it, then switch the venv path (a symlink) with one `rename` and fsync the parent |
+| Disk space | one venv | two venvs during a rebuild |
+| During a rebuild | venv unavailable | old venv in use |
+| Failed rebuild / power loss | no venv until a later run succeeds | old venv stays active; the unfinished build is deleted on the next run |
+
+Use `atomic => true` for venvs that must stay available and where the disk has room for a
+second copy. Changing `atomic` takes effect at the next rebuild, which converts the layout
+(and removes `.<name>.builds/` when switching back to `false`). Point applications at the
+venv path, never at a build directory: builds are deleted when replaced.
+
+Processes already running keep the modules they imported; restart them to use the new
+venv, for example with `notify => Service['myapp']` on the `python_venv` resource.
+
+Venvs created by 0.1.0 are verified and kept in place. With `atomic => true`, their first
+rebuild moves the directory out and puts the symlink in its place; this one-time migration
+takes two renames, so for a moment the venv path does not exist. Every rebuild after that
+is a single atomic rename.
 
 On every run the marker is compared with the declared inputs and the interpreter, and
 the venv is checked according to `verify`:
@@ -52,9 +76,8 @@ the venv is checked according to `verify`:
 
 Packages installed, removed or changed outside Puppet are detected with `size` and `hash`.
 
-> The venv is unusable while it is rebuilt, and stays unusable if the rebuild fails
-> (for example without network). Bytecode created at runtime (`__pycache__` files not
-> listed in `RECORD`) is not verified.
+> Bytecode created at runtime (`__pycache__` files not listed in `RECORD`) is not verified.
+> Use the venv path, not a build directory: builds are deleted when replaced.
 
 In practice, your manifest is the source of truth for the venv content.
 
@@ -62,7 +85,8 @@ In practice, your manifest is the source of truth for the venv content.
 
 ### Parameters
 
-- `path` (namevar): absolute path to the virtualenv directory.
+- `path` (namevar): absolute path of the venv. With `atomic => true` it is a symlink to the
+  active build in `.<name>.builds/` next to it; point applications at this path.
 - `ensure`: `present` (default) or `absent`.
 - `python_executable`: Python binary for venv creation. Default: `python3`.
 - `system_site_packages`: `true`/`false` (default `false`). if `true` - adds `--system-site-packages` flag to `pip install`
@@ -70,6 +94,9 @@ In practice, your manifest is the source of truth for the venv content.
 - `requirements_files`: array of absolute paths to requirements files.
 - `pip_args`: extra args appended to the `pip install` command for requirements.
 - `verify`: per-run check of installed files: `size` (default), `hash` or `none`.
+  See [What "deterministic state" means here](#what-deterministic-state-means-here).
+- `atomic`: `false` (default) rebuilds in place; `true` builds next to the active venv and
+  switches atomically (needs space for two venvs).
   See [What "deterministic state" means here](#what-deterministic-state-means-here).
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.
