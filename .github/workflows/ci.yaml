@@ -6,8 +6,15 @@ on:
 
 jobs:
   ci:
-    name: Lint, Build, Test
+    name: Lint, Build, Test (Puppet ${{ matrix.puppet }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        puppet: ['7', '8']
+    env:
+      PUPPET_GEM_VERSION: '~> ${{ matrix.puppet }}.0'
+      PUPPET_VERSION: ${{ matrix.puppet }}
 
     steps:
       - name: Checkout
@@ -35,7 +42,7 @@ jobs:
 
       - name: Install Ruby tooling (Dockerfile parity)
         run: |
-          gem install puppet --version '~> 7.0'
+          gem install puppet --version "$PUPPET_GEM_VERSION"
           gem install puppet-lint
           gem install puppetlabs_spec_helper
           gem install metadata-json-lint
@@ -64,6 +71,7 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: coverage/coverage.xml
+          flags: puppet${{ matrix.puppet }}
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -72,6 +80,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: module-package
+          name: module-package-puppet${{ matrix.puppet }}
           path: pkg/*.tar.gz
           if-no-files-found: ignore

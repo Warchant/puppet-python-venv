@@ -23,6 +23,8 @@ or disk corruption going undetected.
   a change triggers a rebuild.
 - Venvs created by 0.1.0 with matching requirements are adopted without reinstalling
   if they pass full verification, otherwise they are rebuilt.
+- Tested on Puppet 7 and 8 (CI matrix); the inline verifier is tested with a real
+  Python 3.9.
 
 **Bugfixes**
 
