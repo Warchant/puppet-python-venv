@@ -55,8 +55,11 @@ A rebuild needs disk space for two venvs. Processes already running keep the mod
 they imported; restart them to use the new venv, for example with
 `notify => Service['myapp']` on the `python_venv` resource.
 
-Venvs created by 0.1.0 (a real directory at the venv path) are verified and kept in place;
-the first rebuild moves them out and replaces them with a symlink.
+Venvs created by 0.1.0 (a real directory at the venv path) are verified and kept in place.
+Their first rebuild moves the directory out and puts the symlink in its place. This one-time
+migration takes two renames, so for a moment the venv path does not exist and a process
+starting in exactly that instant gets "No such file or directory". Every rebuild after
+that is a single atomic rename.
 
 On every run the marker is compared with the declared inputs and the interpreter, and
 the venv is checked according to `verify`:
@@ -78,7 +81,8 @@ In practice, your manifest is the source of truth for the venv content.
 
 ### Parameters
 
-- `path` (namevar): absolute path to the virtualenv directory.
+- `path` (namevar): absolute path of the venv. Puppet manages it as a symlink to the active
+  build in `.<name>.builds/` next to it; point applications at this path.
 - `ensure`: `present` (default) or `absent`.
 - `python_executable`: Python binary for venv creation. Default: `python3`.
 - `system_site_packages`: `true`/`false` (default `false`). if `true` - adds `--system-site-packages` flag to `pip install`
