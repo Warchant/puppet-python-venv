@@ -1,8 +1,8 @@
 {
   "name": "warchantua-puppetvenv",
   "version": "0.1.1",
-  "author": "Sky Fortress",
-  "summary": "Puppet module for Sky Fortress configuration",
+  "author": "warchant",
+  "summary": "Manage Python virtual environments with verified, durable dependency installs",
   "license": "Apache-2.0",
   "source": "https://github.com/warchantua/puppet-python-venv",
   "project_page": "https://github.com/Warchant/puppet-python-venv",
