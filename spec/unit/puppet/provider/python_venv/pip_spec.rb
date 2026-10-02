@@ -1,850 +1,471 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'tmpdir'
+require 'fileutils'
 
 describe Puppet::Type.type(:python_venv).provider(:pip) do
-  let(:resource) do
-    Puppet::Type.type(:python_venv).new(
-      path: '/opt/test-venv',
+  let(:tmpdir) { Dir.mktmpdir('python_venv_spec') }
+  let(:venv) { File.join(tmpdir, 'venv') }
+  let(:req_file) { File.join(tmpdir, 'requirements.txt') }
+  let(:base_python) { '/usr/bin/python3.11' }
+  let(:verify) { :size }
+  let(:resource_params) do
+    {
+      path: venv,
       python_executable: '/usr/bin/python3',
-      system_site_packages: false,
       requirements: ['requests==2.28.1', 'flask==2.2.2'],
-      requirements_files: ['/opt/requirements.txt'],
-      pip_args: ['--no-cache-dir'],
-    )
+      requirements_files: [req_file],
+      pip_args: ['--index-url', 'https://mirror.example/simple'],
+      verify: verify,
+    }
   end
-
+  let(:resource) { Puppet::Type.type(:python_venv).new(resource_params) }
   let(:provider) { described_class.new(resource) }
 
+  let(:verifier_ok) do
+    {
+      'ok' => true,
+      'python' => '3.11',
+      'executable' => base_python,
+      'distributions' => ['flask==2.2.2', 'pip==24.0', 'requests==2.28.1'],
+      'files' => 1234,
+    }
+  end
+
+  # Lay out the files exists? looks at, as python -m venv would
+  def make_venv(dir)
+    FileUtils.mkdir_p(File.join(dir, 'bin'))
+    ['bin/python', 'bin/pip', 'bin/activate', 'pyvenv.cfg'].each do |f|
+      path = File.join(dir, f)
+      File.write(path, "content\n")
+      File.chmod(0o755, path)
+    end
+  end
+
+  def state_file
+    File.join(venv, '.requirements_state')
+  end
+
+  def write_committed_state(overrides = {})
+    state = {
+      'format' => 2,
+      'inputs' => provider.calculate_expected_state,
+      'interpreter' => { 'python' => '3.11', 'executable' => base_python, 'base_executable' => base_python },
+      'distributions' => verifier_ok['distributions'],
+      'files' => 1234,
+    }.merge(overrides)
+    File.write(state_file, JSON.generate(state))
+  end
+
+  def process_output(text, status)
+    Puppet::Util::Execution::ProcessOutput.new(text, status)
+  end
+
+  before(:each) do
+    File.write(req_file, "six==1.16.0\n# comment\n")
+    allow(provider).to receive(:resolved_base_python).and_return(base_python)
+  end
+
+  after(:each) { FileUtils.rm_rf(tmpdir) }
+
   describe '#exists?' do
-    context 'when venv exists and is functional' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(200)
-      end
-
-      it 'returns true' do
-        expect(provider.exists?).to be true
-      end
+    it 'is true for a complete venv' do
+      make_venv(venv)
+      expect(provider.exists?).to be true
     end
 
-    context 'when venv directory does not exist' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(false)
-      end
+    it 'is false when the directory is missing' do
+      expect(provider.exists?).to be false
+    end
 
-      it 'returns false' do
+    ['bin/python', 'bin/pip', 'bin/activate', 'pyvenv.cfg'].each do |f|
+      it "is false when #{f} is zero-sized" do
+        make_venv(venv)
+        File.write(File.join(venv, f), '')
         expect(provider.exists?).to be false
       end
     end
 
-    context 'when venv directory exists but executables are missing' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(false)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(false)
-      end
-
-      it 'returns false' do
-        expect(provider.exists?).to be false
-      end
-    end
-
-    context 'when venv has zero-sized python file' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(200)
-      end
-
-      it 'returns false' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected.*python size=0})
-        expect(provider.exists?).to be false
-      end
-    end
-
-    context 'when venv has zero-sized activate file' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-      end
-
-      it 'returns false' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected.*activate size=0})
-        expect(provider.exists?).to be false
-      end
-    end
-
-    context 'when venv has both python and activate zero-sized' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-      end
-
-      it 'returns false' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected.*python size=0.*activate size=0})
-        expect(provider.exists?).to be false
-      end
+    it 'is false when pyvenv.cfg is missing' do
+      make_venv(venv)
+      File.delete(File.join(venv, 'pyvenv.cfg'))
+      expect(provider.exists?).to be false
     end
   end
 
-  describe '#venv_files_valid?' do
-    context 'when python and activate files exist with non-zero size' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(150)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(250)
-      end
-
-      it 'returns true' do
-        expect(provider.send(:venv_files_valid?)).to be true
-      end
+  describe '#calculate_expected_state' do
+    it 'tracks files, individual requirements and system_site_packages' do
+      state = provider.calculate_expected_state
+      expect(state["file:#{req_file}"]).to eq(Digest::SHA256.hexdigest(File.read(req_file)))
+      expect(state["file_list:#{req_file}"]).to eq(['six==1.16.0'])
+      expect(state['individual_requirements_list']).to eq(['flask==2.2.2', 'requests==2.28.1'])
+      expect(state['system_site_packages']).to be false
     end
 
-    context 'when python file does not exist' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(false)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-      end
-
-      it 'returns false' do
-        expect(provider.send(:venv_files_valid?)).to be false
-      end
-    end
-
-    context 'when activate file does not exist' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(false)
-      end
-
-      it 'returns false' do
-        expect(provider.send(:venv_files_valid?)).to be false
-      end
-    end
-
-    context 'when python file has zero size' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(250)
-      end
-
-      it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=0, activate size=250})
-        expect(provider.send(:venv_files_valid?)).to be false
-      end
-    end
-
-    context 'when activate file has zero size' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(150)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-      end
-
-      it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=150, activate size=0})
-        expect(provider.send(:venv_files_valid?)).to be false
-      end
-    end
-
-    context 'when both files have zero size' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-      end
-
-      it 'returns false and logs warning' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected at /opt/test-venv: python size=0, activate size=0})
-        expect(provider.send(:venv_files_valid?)).to be false
-      end
+    it 'raises when a requirements file is missing' do
+      File.delete(req_file)
+      expect { provider.calculate_expected_state }.to raise_error(Puppet::Error, %r{does not exist})
     end
   end
 
-  describe '#create' do
+  describe '#requirements_in_sync?' do
     before(:each) do
-      allow(provider).to receive(:execute)
-      allow(provider).to receive(:create_venv)
-      allow(provider).to receive(:sync_requirements)
-      allow(provider).to receive(:requirements?).and_return(true)
+      make_venv(venv)
+      allow(provider).to receive(:run_verifier).and_return(verifier_ok)
     end
 
-    it 'creates the virtual environment with correct parameters' do
-      expect(provider).to receive(:create_venv)
-      expect(provider).to receive(:sync_requirements)
-
-      provider.create
+    it 'is true when the venv does not exist (ensure handles it)' do
+      FileUtils.rm_rf(venv)
+      expect(provider.requirements_in_sync?).to be true
     end
 
-    context 'with system site packages enabled' do
-      before(:each) do
-        resource[:system_site_packages] = true
-      end
+    it 'is true when committed, unchanged and verified' do
+      write_committed_state
+      expect(provider).to receive(:run_verifier).with('size').and_return(verifier_ok)
+      expect(provider.requirements_in_sync?).to be true
+    end
 
-      it 'includes --system-site-packages flag' do
-        expect(provider).to receive(:create_venv)
-        expect(provider).to receive(:sync_requirements)
+    it 'is false when the commit marker is missing' do
+      expect(provider.requirements_in_sync?).to be false
+      expect(provider.out_of_sync_reason).to match(%r{marker is missing})
+    end
 
-        provider.create
+    it 'is false when the commit marker is corrupted' do
+      File.write(state_file, '{"format": 2, "inpu')
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    it 'is false when the commit marker is zero-sized' do
+      File.write(state_file, '')
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    it 'is false when a requirement changes' do
+      write_committed_state
+      File.write(req_file, "six==1.17.0\n")
+      expect(provider.requirements_in_sync?).to be false
+      expect(provider.out_of_sync_reason).to eq('declared requirements changed')
+    end
+
+    it 'is false when a requirements file is removed from the resource' do
+      write_committed_state
+      resource[:requirements_files] = []
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    it 'is false when system_site_packages changes' do
+      write_committed_state
+      resource[:system_site_packages] = true
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    it 'is false when the base python changes' do
+      write_committed_state
+      allow(provider).to receive(:resolved_base_python).and_return('/usr/bin/python3.12')
+      expect(provider.requirements_in_sync?).to be false
+      expect(provider.out_of_sync_reason).to match(%r{base python changed})
+    end
+
+    it 'is false when verification fails' do
+      write_committed_state
+      allow(provider).to receive(:run_verifier).and_return('ok' => false, 'errors' => ['/x/six.py: size 0, expected 34549'])
+      expect(provider.requirements_in_sync?).to be false
+      expect(provider.out_of_sync_reason).to match(%r{verification failed: /x/six.py: size 0})
+    end
+
+    it 'is false when installed distributions differ from the committed state' do
+      write_committed_state
+      allow(provider).to receive(:run_verifier).and_return(verifier_ok.merge('distributions' => ['flask==2.2.2']))
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    it 'is false when the venv interpreter differs from the committed one' do
+      write_committed_state
+      allow(provider).to receive(:run_verifier).and_return(verifier_ok.merge('python' => '3.12'))
+      expect(provider.requirements_in_sync?).to be false
+    end
+
+    context 'with verify => hash' do
+      let(:verify) { :hash }
+
+      it 'runs the full hash check' do
+        write_committed_state
+        expect(provider).to receive(:run_verifier).with('hash').and_return(verifier_ok)
+        expect(provider.requirements_in_sync?).to be true
       end
     end
 
-    context 'when venv creation fails' do
-      before(:each) do
-        allow(provider).to receive(:create_venv).and_raise(Puppet::Error, 'Failed to create virtual environment')
-      end
+    context 'with verify => none' do
+      let(:verify) { :none }
 
-      it 'raises a Puppet::Error' do
-        expect { provider.create }.to raise_error(Puppet::Error, %r{Failed to create virtual environment})
+      it 'does not run the verifier' do
+        write_committed_state
+        expect(provider).not_to receive(:run_verifier)
+        expect(provider.requirements_in_sync?).to be true
       end
     end
 
-    context 'when venv appears created but is not functional' do
-      before(:each) do
-        allow(provider).to receive(:create_venv).and_call_original
-        allow(provider).to receive(:execute)
-        allow(provider).to receive(:exists?).and_return(false)
+    context 'with a state file from 0.1.0' do
+      def write_legacy_state(inputs)
+        File.write(state_file, JSON.generate(inputs.merge('pip_freeze_hash' => 'abc')))
       end
 
-      it 'raises a Puppet::Error' do
-        expect { provider.send(:create_venv) }.to raise_error(Puppet::Error, %r{appeared to succeed but.*is not functional})
+      it 'reports it for adoption when the requirements match' do
+        write_legacy_state(provider.calculate_expected_state.reject { |k, _| k == 'system_site_packages' })
+        expect(provider.requirements_in_sync?).to be false
+        expect(provider.out_of_sync_reason).to eq(described_class::LEGACY_STATE)
       end
+
+      it 'reports a rebuild when the requirements differ' do
+        write_legacy_state('individual_requirements_list' => ['other==1.0'])
+        expect(provider.out_of_sync_reason).to match(%r{unknown format})
+      end
+    end
+
+    it 'propagates a missing requirements file instead of reporting out of sync' do
+      write_committed_state
+      File.delete(req_file)
+      expect { provider.requirements_in_sync? }.to raise_error(Puppet::Error, %r{does not exist})
     end
   end
 
-  describe '#create_venv' do
-    before(:each) do
-      allow(provider).to receive(:execute)
-      allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-      allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-      allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-      allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-      allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-      allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
-      allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(200)
-      allow(provider).to receive(:upgrade_pip)
-    end
+  describe '#run_verifier' do
+    before(:each) { make_venv(venv) }
 
-    it 'creates venv with correct command' do
+    it 'runs the venv python in isolated mode with mode and venv path' do
       expect(provider).to receive(:execute).with(
-        ['/usr/bin/python3', '-m', 'venv', '/opt/test-venv'],
-        hash_including(failonfail: true, combine: true),
-      )
-
-      provider.send(:create_venv)
+        [File.join(venv, 'bin', 'python'), '-I', '-c', described_class::VERIFY_SCRIPT, 'hash', venv],
+        failonfail: false, combine: false,
+      ).and_return(process_output(JSON.generate(verifier_ok), 0))
+      expect(provider.run_verifier('hash')['ok']).to be true
     end
 
-    context 'with system site packages enabled' do
-      before(:each) do
-        resource[:system_site_packages] = true
-      end
-
-      it 'includes --system-site-packages flag' do
-        expect(provider).to receive(:execute).with(
-          ['/usr/bin/python3', '-m', 'venv', '--system-site-packages', '/opt/test-venv'],
-          hash_including(failonfail: true, combine: true),
-        )
-
-        provider.send(:create_venv)
-      end
+    it 'fails on a non-zero exit status even if the output says ok' do
+      allow(provider).to receive(:execute).and_return(process_output(JSON.generate(verifier_ok), 1))
+      expect(provider.run_verifier('size')['ok']).to be false
     end
 
-    context 'when venv creation produces zero-sized files' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
+    it 'fails when the output is not JSON (e.g. the interpreter crashed)' do
+      allow(provider).to receive(:execute).and_return(process_output('ImportError: bad magic number', 1))
+      result = provider.run_verifier('size')
+      expect(result['ok']).to be false
+      expect(result['errors'].first).to match(%r{no result})
+    end
+
+    it 'fails when the interpreter cannot be executed' do
+      allow(provider).to receive(:execute).and_raise(Errno::ENOEXEC)
+      expect(provider.run_verifier('size')['ok']).to be false
+    end
+  end
+
+  describe '#create (rebuild from scratch)' do
+    let(:commands) { [] }
+    let(:verifier_results) { [verifier_ok] }
+    let(:verifier_modes) { [] }
+
+    before(:each) do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        commands << cmd
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        process_output('', 0)
       end
-
-      it 'logs error, cleans up, and raises Puppet::Error' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected})
-        expect(Puppet).to receive(:err).with(%r{Python venv creation failed.*contains invalid zero-sized files})
-        expect(Puppet::FileSystem).to receive(:rmtree).with('/opt/test-venv')
-
-        expect { provider.send(:create_venv) }.to raise_error(
-          Puppet::Error,
-          %r{Failed to create valid virtual environment.*venv files are zero-sized},
-        )
+      allow(provider).to receive(:run_verifier) do |mode|
+        verifier_modes << mode
+        (verifier_results.length > 1) ? verifier_results.shift : verifier_results.first
       end
     end
 
-    context 'when only python file is zero-sized' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(0)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(200)
-        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
+    it 'creates, installs once, flushes to disk, verifies and commits' do
+      provider.create
+
+      venv_cmd = ['/usr/bin/python3', '-m', 'venv', venv]
+      install_cmd = [File.join(venv, 'bin', 'pip'), 'install', '-r', req_file,
+                     '-r', File.join(venv, '.individual_requirements.txt'),
+                     '--index-url', 'https://mirror.example/simple']
+      sync_cmd = ['sync', '-f', venv]
+      expect(commands).to eq([venv_cmd, [File.join(venv, 'bin', 'pip'), 'install', '--upgrade', 'pip'], install_cmd, sync_cmd])
+      expect(verifier_modes).to eq(['hash'])
+
+      state = JSON.parse(File.read(state_file))
+      expect(state['format']).to eq(2)
+      expect(state['inputs']).to eq(provider.calculate_expected_state)
+      expect(state['interpreter']).to eq('python' => '3.11', 'executable' => base_python, 'base_executable' => base_python)
+      expect(state['distributions']).to eq(verifier_ok['distributions'])
+      expect(Dir.glob("#{state_file}.tmp*")).to be_empty
+    end
+
+    it 'deletes an existing venv, including stale packages, before creating it' do
+      make_venv(venv)
+      File.write(File.join(venv, 'stale'), 'x')
+      write_committed_state
+      provider.create
+      expect(File.exist?(File.join(venv, 'stale'))).to be false
+    end
+
+    it 'removes the commit marker before deleting the venv' do
+      make_venv(venv)
+      write_committed_state
+      marker_gone_at_rm = nil
+      allow(FileUtils).to receive(:rm_r).and_wrap_original do |m, path, **opts|
+        marker_gone_at_rm = !File.exist?(state_file)
+        m.call(path, **opts)
       end
+      provider.create
+      expect(marker_gone_at_rm).to be true
+    end
 
-      it 'detects invalid venv and raises error' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected.*python size=0})
-        expect(Puppet).to receive(:err).with(%r{Python venv creation failed})
-        expect(Puppet::FileSystem).to receive(:rmtree).with('/opt/test-venv')
+    it 'falls back to plain sync when sync -f is not supported' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        commands << cmd
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        raise Puppet::ExecutionFailure, 'sync: invalid option' if cmd == ['sync', '-f', venv]
+        process_output('', 0)
+      end
+      provider.create
+      expect(commands).to include(['sync'])
+      expect(File.exist?(state_file)).to be true
+    end
 
-        expect { provider.send(:create_venv) }.to raise_error(
-          Puppet::Error,
-          %r{venv files are zero-sized},
-        )
+    it 'fails without committing when the disk cannot be flushed' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        raise Puppet::ExecutionFailure, 'sync failed' if cmd.first == 'sync'
+        process_output('', 0)
+      end
+      expect { provider.create }.to raise_error(Puppet::Error, %r{flush})
+      expect(File.exist?(state_file)).to be false
+    end
+
+    it 'continues when the pip upgrade fails (verification still guards the result)' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        commands << cmd
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        raise Puppet::ExecutionFailure, 'offline' if cmd.include?('--upgrade')
+        process_output('', 0)
+      end
+      provider.create
+      expect(File.exist?(state_file)).to be true
+    end
+
+    context 'when the first attempt fails verification' do
+      let(:verifier_results) { [{ 'ok' => false, 'errors' => ['six.py: sha256 mismatch'] }, verifier_ok] }
+
+      it 'rebuilds again without the pip cache and commits' do
+        provider.create
+        installs = commands.select { |c| c[1] == 'install' && c.include?('-r') }
+        expect(installs.size).to eq(2)
+        expect(installs.first).not_to include('--no-cache-dir')
+        expect(installs.last.last).to eq('--no-cache-dir')
+        expect(File.exist?(state_file)).to be true
       end
     end
 
-    context 'when only activate file is zero-sized' do
-      before(:each) do
-        allow(File).to receive(:directory?).with('/opt/test-venv').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:executable?).with('/opt/test-venv/bin/pip').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/python').and_return(true)
-        allow(File).to receive(:exist?).with('/opt/test-venv/bin/activate').and_return(true)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(100)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(0)
-        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
-      end
+    context 'when verification keeps failing' do
+      let(:verifier_results) { [{ 'ok' => false, 'errors' => ['six.py: sha256 mismatch'] }] }
 
-      it 'detects invalid venv and raises error' do
-        expect(Puppet).to receive(:warning).with(%r{Invalid venv detected.*activate size=0})
-        expect(Puppet).to receive(:err).with(%r{Python venv creation failed})
-        expect(Puppet::FileSystem).to receive(:rmtree).with('/opt/test-venv')
-
-        expect { provider.send(:create_venv) }.to raise_error(
-          Puppet::Error,
-          %r{venv files are zero-sized},
-        )
+      it 'fails and leaves no commit marker' do
+        expect { provider.create }.to raise_error(Puppet::Error, %r{sha256 mismatch})
+        expect(File.exist?(state_file)).to be false
       end
     end
 
-    context 'when venv files are valid after creation' do
+    it 'fails and leaves no commit marker when pip install fails' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        raise Puppet::ExecutionFailure, 'No matching distribution' if cmd.include?('-r')
+        process_output('', 0)
+      end
+      expect { provider.create }.to raise_error(Puppet::Error, %r{No matching distribution})
+      expect(File.exist?(state_file)).to be false
+    end
+
+    it 'fails when python -m venv produces zero-sized files' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        if cmd[1..2] == ['-m', 'venv']
+          make_venv(venv)
+          File.write(File.join(venv, 'bin', 'activate'), '')
+        end
+        process_output('', 0)
+      end
+      expect { provider.create }.to raise_error(Puppet::Error, %r{zero-sized})
+      expect(File.exist?(state_file)).to be false
+    end
+
+    it 'does not touch an existing venv when a requirements file is missing' do
+      make_venv(venv)
+      File.delete(req_file)
+      expect { provider.create }.to raise_error(Puppet::Error, %r{does not exist})
+      expect(File.exist?(File.join(venv, 'pyvenv.cfg'))).to be true
+      expect(commands).to be_empty
+    end
+
+    context 'without requirements' do
+      let(:resource_params) { { path: venv, python_executable: '/usr/bin/python3' } }
+
+      it 'still verifies and commits the venv' do
+        provider.create
+        expect(commands.none? { |c| c.include?('-r') }).to be true
+        expect(verifier_modes).to eq(['hash'])
+        expect(File.exist?(state_file)).to be true
+      end
+    end
+  end
+
+  describe '#sync_requirements' do
+    before(:each) do
+      make_venv(venv)
+      allow(provider).to receive(:run_verifier).and_return(verifier_ok)
+    end
+
+    it 'does nothing when in sync' do
+      write_committed_state
+      expect(provider).not_to receive(:rebuild)
+      provider.sync_requirements
+    end
+
+    it 'rebuilds when out of sync' do
+      expect(provider).to receive(:rebuild).with(%r{marker is missing})
+      provider.sync_requirements
+    end
+
+    it 'does not check again after a rebuild in the same run' do
+      allow(provider).to receive(:execute) do |cmd, _opts|
+        make_venv(venv) if cmd[1..2] == ['-m', 'venv']
+        process_output('', 0)
+      end
+      FileUtils.rm_rf(venv)
+      expect(provider).to receive(:run_verifier).once.and_return(verifier_ok)
+      provider.create
+      provider.sync_requirements
+    end
+
+    context 'with a matching 0.1.0 state file' do
       before(:each) do
-        allow(File).to receive(:size).with('/opt/test-venv/bin/python').and_return(150)
-        allow(File).to receive(:size).with('/opt/test-venv/bin/activate').and_return(250)
+        legacy = provider.calculate_expected_state.reject { |k, _| k == 'system_site_packages' }
+        File.write(state_file, JSON.generate(legacy.merge('pip_freeze_hash' => 'abc')))
       end
 
-      it 'completes successfully and upgrades pip' do
-        expect(provider).to receive(:upgrade_pip)
-        expect { provider.send(:create_venv) }.not_to raise_error
+      it 'adopts the venv when it passes full verification' do
+        expect(provider).not_to receive(:rebuild)
+        expect(provider).to receive(:run_verifier).with('hash').and_return(verifier_ok)
+        provider.sync_requirements
+        expect(JSON.parse(File.read(state_file))['format']).to eq(2)
+      end
+
+      it 'rebuilds the venv when it fails verification' do
+        allow(provider).to receive(:run_verifier).and_return('ok' => false, 'errors' => ['broken'])
+        expect(provider).to receive(:rebuild).with(%r{0\.1\.0 failed verification})
+        provider.sync_requirements
       end
     end
   end
 
   describe '#destroy' do
-    context 'when venv exists' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(true)
-      end
-
-      it 'removes the venv directory' do
-        expect(Puppet::FileSystem).to receive(:rmtree).with('/opt/test-venv')
-        provider.destroy
-      end
-    end
-
-    context 'when venv does not exist' do
-      before(:each) do
-        allow(File).to receive(:exist?).with('/opt/test-venv').and_return(false)
-      end
-
-      it 'does not try to remove anything' do
-        expect(Puppet::FileSystem).not_to receive(:rmtree)
-        provider.destroy
-      end
-    end
-  end
-
-  describe 'private methods' do
-    describe '#install_requirements_file' do
-      before(:each) do
-        allow(provider).to receive(:execute)
-      end
-
-      it 'installs requirements with pip args' do
-        expect(provider).to receive(:execute).with(
-          ['/opt/test-venv/bin/pip', 'install', '-r', '/tmp/requirements.txt', '--no-cache-dir'],
-          hash_including(failonfail: true, combine: true),
-        )
-
-        provider.send(:install_requirements_file, '/tmp/requirements.txt')
-      end
-
-      context 'when pip install fails' do
-        before(:each) do
-          allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'install failed')
-        end
-
-        it 'raises Puppet::Error' do
-          expect { provider.send(:install_requirements_file, '/tmp/requirements.txt') }.to raise_error(Puppet::Error, %r{Failed to install requirements})
-        end
-      end
-    end
-
-    describe '#file_hash' do
-      it 'calculates SHA256 hash of file content' do
-        allow(File).to receive(:read).with('/tmp/test.txt').and_return("test content\n")
-        hash = provider.send(:file_hash, '/tmp/test.txt')
-        expect(hash).to be_a(String)
-        expect(hash.length).to eq(64) # SHA256 hex digest length
-      end
-    end
-
-    describe '#individual_requirements_hash' do
-      it 'calculates hash of sorted requirements' do
-        hash = provider.send(:individual_requirements_hash)
-        expect(hash).to be_a(String)
-        expect(hash.length).to eq(64)
-      end
-
-      it 'produces different hash when requirements change' do
-        old_hash = provider.send(:individual_requirements_hash)
-        resource[:requirements] = ['new-package==1.0.0']
-        new_hash = provider.send(:individual_requirements_hash)
-        expect(old_hash).not_to eq(new_hash)
-      end
-    end
-
-    describe '#get_pip_freeze_hash' do
-      context 'when venv exists' do
-        before(:each) do
-          allow(provider).to receive(:exists?).and_return(true)
-          allow(provider).to receive(:execute).with(
-            ['/opt/test-venv/bin/pip', 'freeze', '-l'],
-            hash_including(failonfail: true),
-          ).and_return("flask==2.2.2\nrequests==2.28.1\n")
-        end
-
-        it 'returns SHA256 hash of pip freeze output' do
-          hash = provider.send(:get_pip_freeze_hash)
-          expect(hash).to be_a(String)
-          expect(hash.length).to eq(64) # SHA256 hex digest length
-        end
-
-        it 'hash changes when installed packages change' do
-          old_hash = provider.send(:get_pip_freeze_hash)
-
-          # Change pip freeze output
-          allow(provider).to receive(:execute).with(
-            ['/opt/test-venv/bin/pip', 'freeze', '-l'],
-            hash_including(failonfail: true),
-          ).and_return("flask==2.3.0\nrequests==2.28.1\n")
-
-          new_hash = provider.send(:get_pip_freeze_hash)
-          expect(old_hash).not_to eq(new_hash)
-        end
-      end
-
-      context 'when venv does not exist' do
-        before(:each) do
-          allow(provider).to receive(:exists?).and_return(false)
-        end
-
-        it 'returns nil' do
-          expect(provider.send(:get_pip_freeze_hash)).to be_nil
-        end
-      end
-
-      context 'when pip freeze fails' do
-        before(:each) do
-          allow(provider).to receive(:exists?).and_return(true)
-          allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'pip failed')
-        end
-
-        it 'logs warning and returns nil' do
-          expect(Puppet).to receive(:warning).with(%r{Failed to run pip freeze})
-          expect(provider.send(:get_pip_freeze_hash)).to be_nil
-        end
-      end
-    end
-  end
-
-  describe 'helper methods' do
-    it 'returns correct python command' do
-      expect(provider.python_cmd).to eq('/usr/bin/python3')
-    end
-
-    it 'returns correct venv path' do
-      expect(provider.venv_path).to eq('/opt/test-venv')
-    end
-
-    it 'returns correct pip path' do
-      expect(provider.pip_path).to eq('/opt/test-venv/bin/pip')
-    end
-
-    it 'returns correct python venv path' do
-      expect(provider.python_venv_path).to eq('/opt/test-venv/bin/python')
-    end
-
-    it 'returns correct activate path' do
-      expect(provider.activate_path).to eq('/opt/test-venv/bin/activate')
-    end
-  end
-
-  describe 'when state file is missing' do
-    let(:venv_exists_resource) do
-      Puppet::Type.type(:python_venv).new(
-        path: '/opt/existing-venv',
-        requirements: ['requests==2.28.1'],
-      )
-    end
-
-    let(:venv_exists_provider) { described_class.new(venv_exists_resource) }
-
-    before(:each) do
-      # Mock that venv exists
-      allow(venv_exists_provider).to receive(:exists?).and_return(true)
-      allow(venv_exists_provider).to receive(:exists?).and_return(true)
-
-      # Mock that state file does NOT exist (important!)
-      allow(File).to receive(:exist?).and_call_original
-      allow(File).to receive(:exist?).with('/opt/existing-venv/.requirements_state').and_return(false)
-
-      # Mock file operations for individual requirements
-      allow(File).to receive(:write)
-      allow(File).to receive(:read).and_call_original
-
-      # Mock execute for pip install
-      allow(venv_exists_provider).to receive(:execute).and_return('')
-      allow(venv_exists_provider).to receive(:get_pip_freeze_hash).and_return('newhash123')
-
-      # Mock individual_requirements_hash
-      allow(venv_exists_provider).to receive(:individual_requirements_hash).and_return('reqhash456')
-    end
-
-    it 'triggers full reinstallation when state file is missing' do
-      expect(Puppet).to receive(:info).with(%r{Installing requirements \(initial setup\)}).ordered
-      expect(Puppet).to receive(:info).with(%r{Requirements synchronized successfully}).ordered
-
-      # Allow other info calls
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      expect(venv_exists_provider).to receive(:install_requirements_file).with(
-        '/opt/existing-venv/.individual_requirements.txt',
-      )
-
-      venv_exists_provider.send(:sync_requirements)
-    end
-
-    it 'creates state file after reinstallation' do
-      expect(File).to receive(:write).with(
-        '/opt/existing-venv/.requirements_state',
-        anything,
-      )
-
-      venv_exists_provider.send(:sync_requirements)
-    end
-  end
-
-  describe 'when state file is missing' do
-    let(:venv_exists_resource) do
-      Puppet::Type.type(:python_venv).new(
-        path: '/opt/existing-venv',
-        requirements: ['requests==2.28.1'],
-      )
-    end
-
-    let(:venv_exists_provider) { described_class.new(venv_exists_resource) }
-
-    before(:each) do
-      # Mock that venv exists
-      allow(venv_exists_provider).to receive(:exists?).and_return(true)
-      allow(venv_exists_provider).to receive(:exists?).and_return(false)
-
-      # Mock that state file does NOT exist (important!)
-      allow(File).to receive(:exist?).and_call_original
-      allow(File).to receive(:exist?).with('/opt/existing-venv/.requirements_state').and_return(false)
-
-      # Mock file operations for individual requirements
-      allow(File).to receive(:write)
-      allow(File).to receive(:read).and_call_original
-
-      # Mock execute for pip install
-      allow(venv_exists_provider).to receive(:execute).and_return('')
-      allow(venv_exists_provider).to receive(:get_pip_freeze_hash).and_return('newhash123')
-
-      # Mock individual_requirements_hash
-      allow(venv_exists_provider).to receive(:individual_requirements_hash).and_return('reqhash456')
-
-      # Mock exists? method
-      allow(provider).to receive(:exists?).and_return(true)
-    end
-
-    it 'triggers full reinstallation when state file is missing' do
-      expect(Puppet).to receive(:info).with(%r{Installing requirements \(initial setup\)}).ordered
-      expect(Puppet).to receive(:info).with(%r{Requirements synchronized successfully}).ordered
-
-      # Allow other info calls
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      expect(venv_exists_provider).to receive(:install_requirements_file).with(
-        '/opt/existing-venv/.individual_requirements.txt',
-      )
-
-      venv_exists_provider.send(:sync_requirements)
-    end
-
-    it 'creates state file after reinstallation' do
-      expect(File).to receive(:write).with(
-        '/opt/existing-venv/.requirements_state',
-        anything,
-      )
-
-      venv_exists_provider.send(:sync_requirements)
-    end
-  end
-
-  describe 'when pip freeze hash is poisoned by manual pip install' do
-    let(:poisoned_venv_resource) do
-      Puppet::Type.type(:python_venv).new(
-        path: '/opt/poisoned-venv',
-        requirements: ['requests==2.28.1', 'flask==2.2.2'],
-      )
-    end
-
-    let(:poisoned_venv_provider) { described_class.new(poisoned_venv_resource) }
-
-    before(:each) do
-      # Mock that venv exists
-      allow(poisoned_venv_provider).to receive(:exists?).and_return(true)
-
-      # Mock that state file EXISTS with original pip freeze hash
-      allow(File).to receive(:exist?).and_call_original
-      allow(File).to receive(:exist?).with('/opt/poisoned-venv/.requirements_state').and_return(true)
-
-      # Original state that was saved after initial sync
-      original_state = {
-        'individual_requirements' => 'original_req_hash_123',
-        'pip_freeze_hash' => 'original_freeze_abc'
-      }
-
-      # Mock loading the original state
-      allow(File).to receive(:read).with('/opt/poisoned-venv/.requirements_state').and_return(JSON.pretty_generate(original_state))
-
-      # Mock that individual requirements hash hasn't changed
-      allow(poisoned_venv_provider).to receive(:individual_requirements_hash).and_return('original_req_hash_123')
-
-      # Mock that pip freeze hash HAS changed (someone manually installed packages)
-      # First call returns the poisoned hash, subsequent calls return new hash after reinstall
-      call_count = 0
-      allow(poisoned_venv_provider).to receive(:get_pip_freeze_hash) do
-        call_count += 1
-        if call_count == 1
-          'poisoned_freeze_xyz' # Different from original_freeze_abc
-        else
-          'new_freeze_after_reinstall_def' # Hash after we reinstall
-        end
-      end
-
-      # Mock file operations
-      allow(File).to receive(:write)
-
-      # Mock execute for pip install
-      allow(poisoned_venv_provider).to receive(:execute).and_return('')
-    end
-
-    it 'detects pip freeze hash mismatch' do
-      in_sync = poisoned_venv_provider.requirements_in_sync?
-      expect(in_sync).to be false
-    end
-
-    it 'logs that installed packages were modified externally' do
-      expect(Puppet).to receive(:info).with(%r{Changes detected - reinstalling requirements}).ordered
-      expect(Puppet).to receive(:info).with(%r{Installed packages modified externally}).ordered
-      expect(Puppet).to receive(:info).with(%r{Requirements synchronized successfully}).ordered
-
-      # Allow other info/debug calls
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      poisoned_venv_provider.send(:sync_requirements)
-    end
-
-    it 'triggers reinstallation with force flag' do
-      # Allow logging
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      expect(poisoned_venv_provider).to receive(:install_requirements_file).with(
-        '/opt/poisoned-venv/.individual_requirements.txt',
-      )
-
-      poisoned_venv_provider.send(:sync_requirements)
-    end
-
-    it 'saves new pip freeze hash to state file after reinstall' do
-      # Allow logging
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      # Expect state file to be written with new pip freeze hash
-      expect(File).to receive(:write).with(
-        '/opt/poisoned-venv/.requirements_state',
-        %r{new_freeze_after_reinstall_def},
-      )
-
-      poisoned_venv_provider.send(:sync_requirements)
-    end
-
-    it 'includes both individual requirements hash and new pip freeze hash in saved state' do
-      # Allow logging
-      allow(Puppet).to receive(:info)
-      allow(Puppet).to receive(:debug)
-
-      # Capture what gets written to the state file
-      written_state = nil
-      allow(File).to receive(:write).with(
-        '/opt/poisoned-venv/.requirements_state',
-        anything,
-      ) do |_path, content|
-        written_state = JSON.parse(content)
-      end
-
-      poisoned_venv_provider.send(:sync_requirements)
-
-      expect(written_state).to include(
-        'individual_requirements' => 'original_req_hash_123',
-        'pip_freeze_hash' => 'new_freeze_after_reinstall_def',
-      )
-    end
-  end
-
-  describe 'additional coverage cases' do
-    describe '.default_python_cmd' do
-      it 'returns configured python3 command when available' do
-        allow(described_class).to receive(:command).with(:python3).and_return('/usr/bin/python3')
-        expect(described_class.default_python_cmd).to eq('/usr/bin/python3')
-      end
-
-      it 'falls back to plain python3 when command lookup fails' do
-        allow(described_class).to receive(:command).with(:python3).and_raise(Puppet::MissingCommand, 'missing')
-        expect(described_class.default_python_cmd).to eq('python3')
-      end
-    end
-
-    describe '#flush' do
-      it 'synchronizes requirements when venv exists and requirements are declared' do
-        allow(provider).to receive(:exists?).and_return(true)
-        allow(provider).to receive(:requirements?).and_return(true)
-        expect(provider).to receive(:sync_requirements)
-
-        provider.flush
-      end
-
-      it 'does nothing when venv does not exist' do
-        allow(provider).to receive(:exists?).and_return(false)
-        allow(provider).to receive(:requirements?).and_return(true)
-        expect(provider).not_to receive(:sync_requirements)
-
-        provider.flush
-      end
-    end
-
-    describe '#parse_requirements_file' do
-      it 'parses, strips comments, and sorts requirements' do
-        allow(File).to receive(:readlines).with('/tmp/req.txt').and_return([
-                                                                             "requests==2.31.0\n",
-                                                                             "\n",
-                                                                             "flask==3.0.0 # inline\n",
-                                                                             "# full comment\n",
-                                                                           ])
-
-        expect(provider.send(:parse_requirements_file, '/tmp/req.txt')).to eq(['flask==3.0.0', 'requests==2.31.0'])
-      end
-
-      it 'returns empty array and logs warning when parsing fails' do
-        allow(File).to receive(:readlines).with('/tmp/req.txt').and_raise(StandardError, 'boom')
-        expect(Puppet).to receive(:warning).with(%r{Failed to parse requirements file /tmp/req.txt: boom})
-
-        expect(provider.send(:parse_requirements_file, '/tmp/req.txt')).to eq([])
-      end
-    end
-
-    describe '#calculate_expected_state' do
-      it 'raises Puppet::Error when requirements file does not exist' do
-        resource[:requirements_files] = ['/tmp/missing.txt']
-        allow(File).to receive(:exist?).with('/tmp/missing.txt').and_return(false)
-
-        expect { provider.send(:calculate_expected_state) }
-          .to raise_error(Puppet::Error, %r{Requirements file does not exist: /tmp/missing.txt})
-      end
-    end
-
-    describe '#upgrade_pip' do
-      it 'logs warning and continues when pip upgrade fails' do
-        allow(provider).to receive(:execute).and_raise(Puppet::ExecutionFailure, 'upgrade failed')
-        expect(Puppet).to receive(:warning).with(%r{Failed to upgrade pip in /opt/test-venv: upgrade failed})
-
-        expect { provider.send(:upgrade_pip) }.not_to raise_error
-      end
-    end
-
-    describe '#sync_requirements' do
-      it 'logs in-sync message and skips installation when no changes are detected' do
-        allow(provider).to receive(:requirements?).and_return(true)
-        allow(provider).to receive(:calculate_expected_state).and_return({ 'individual_requirements' => 'abc' })
-        allow(provider).to receive(:load_requirements_state).and_return({ 'individual_requirements' => 'abc' })
-        allow(provider).to receive(:states_differ?).and_return(false)
-        expect(Puppet).to receive(:info).with(%r{No changes detected - requirements are in sync})
-        expect(provider).not_to receive(:install_all_requirements)
-
-        provider.send(:sync_requirements)
-      end
-    end
-
-    describe '#log_requirement_list_changes' do
-      it 'logs additions, removals and version changes' do
-        expect(Puppet).to receive(:info).with('  - Requirements file: /tmp/req.txt changed:').ordered
-        expect(Puppet).to receive(:info).with('      + flask==3.0.0').ordered
-        expect(Puppet).to receive(:info).with('      - django==4.2.0').ordered
-        expect(Puppet).to receive(:info).with('      ~ requests==1.0.0 => requests==2.0.0').ordered
-
-        provider.send(
-          :log_requirement_list_changes,
-          'Requirements file: /tmp/req.txt',
-          ['requests==2.0.0', 'flask==3.0.0'],
-          ['requests==1.0.0', 'django==4.2.0'],
-        )
-      end
-    end
-
-    describe '#save_state_after_install' do
-      it 'saves state without pip_freeze_hash when hash cannot be calculated' do
-        allow(provider).to receive(:get_pip_freeze_hash).and_return(nil)
-        expect(provider).to receive(:save_requirements_state).with({ 'individual_requirements' => 'abc' })
-
-        provider.send(:save_state_after_install, { 'individual_requirements' => 'abc' })
-      end
+    it 'removes the venv' do
+      make_venv(venv)
+      provider.destroy
+      expect(File.exist?(venv)).to be false
     end
   end
 end
