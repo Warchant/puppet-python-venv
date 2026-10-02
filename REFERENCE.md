@@ -70,6 +70,7 @@ The following parameters are available in the `python_venv` type.
 * [`requirements`](#-python_venv--requirements)
 * [`requirements_files`](#-python_venv--requirements_files)
 * [`system_site_packages`](#-python_venv--system_site_packages)
+* [`verify`](#-python_venv--verify)
 
 ##### <a name="-python_venv--path"></a>`path`
 
@@ -111,3 +112,18 @@ Valid values: `true`, `false`, `true`, `false`
 Whether to give the virtual environment access to system site packages.
 
 Default value: `false`
+
+##### <a name="-python_venv--verify"></a>`verify`
+
+Valid values: `size`, `hash`, `none`
+
+How installed files are checked on every Puppet run (after an install they are
+always checked by sha256 against each package's RECORD before the venv is committed).
+* `size` (default): stat every file listed in RECORD and compare its size. Cheap;
+  catches missing, zero-sized and truncated files.
+* `hash`: recompute the sha256 of every file. Catches any content change, but reads
+  the whole venv on every run.
+* `none`: only compare the declared inputs with the committed state.
+Any failed check rebuilds the venv from scratch.
+
+Default value: `size`

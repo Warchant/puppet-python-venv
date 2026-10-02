@@ -23,9 +23,38 @@ This module provides the custom resource type `python_venv`, which:
 
 ## What "deterministic state" means here
 
-`python_venv` stores an internal state file in the venv and compares it on every run.
-If the expected dependency inputs or installed package state changes, Puppet re-syncs the
-environment so the venv converges back to what is declared.
+A `python_venv` reported as in sync means: the venv was built from the declared inputs,
+every installed file was flushed to disk and verified against its package's `RECORD`
+(sha256), and it still passes the per-run check.
+
+How a venv is built (on first run, on any change, and on any failed check):
+
+1. The commit marker (`<venv>/.requirements_state`) is deleted durably.
+2. The venv is deleted and recreated with `python -m venv`; pip is upgraded (best effort).
+3. All requirements are installed with one `pip install -r ... -r ...`.
+4. Everything is flushed to disk (`sync -f <venv>`, or `sync`).
+5. Every file listed in every `RECORD` is hashed and compared.
+6. The marker is written atomically (temp file, fsync, rename, fsync directory).
+
+If any step fails, the build is retried once with `--no-cache-dir` (in case a cached
+wheel is corrupted); if it fails again, the resource fails and no marker is written,
+so the next run tries again. A power loss at any point leaves the venv without a marker,
+which also triggers a rebuild.
+
+On every run the marker is compared with the declared inputs and the interpreter, and
+the venv is checked according to `verify`:
+
+| `verify`         | per-run check                                   | catches                               |
+|------------------|-------------------------------------------------|---------------------------------------|
+| `size` (default) | `stat` every file in `RECORD`, compare its size | missing, zero-sized, truncated files  |
+| `hash`           | sha256 of every file in `RECORD`                | any content change (reads whole venv) |
+| `none`           | inputs and marker only                          | changed requirements                  |
+
+Packages installed, removed or changed outside Puppet are detected with `size` and `hash`.
+
+> The venv is unusable while it is rebuilt, and stays unusable if the rebuild fails
+> (for example without network). Bytecode created at runtime (`__pycache__` files not
+> listed in `RECORD`) is not verified.
 
 In practice, your manifest is the source of truth for the venv content.
 
@@ -39,7 +68,9 @@ In practice, your manifest is the source of truth for the venv content.
 - `system_site_packages`: `true`/`false` (default `false`). if `true` - adds `--system-site-packages` flag to `pip install`
 - `requirements`: array of requirement specs (for example `['httpx==0.27.0']`).
 - `requirements_files`: array of absolute paths to requirements files.
-- `pip_args`: extra args appended to `pip install` commands.
+- `pip_args`: extra args appended to the `pip install` command for requirements.
+- `verify`: per-run check of installed files: `size` (default), `hash` or `none`.
+  See [What "deterministic state" means here](#what-deterministic-state-means-here).
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.
 

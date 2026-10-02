@@ -1,6 +1,6 @@
 {
   "name": "warchantua-puppetvenv",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Sky Fortress",
   "summary": "Puppet module for Sky Fortress configuration",
   "license": "Apache-2.0",
