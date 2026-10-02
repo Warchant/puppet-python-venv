@@ -17,11 +17,13 @@ or disk corruption going undetected.
 - Installed files are flushed to disk (`sync -f`, falling back to `sync`) before the
   venv is committed; the state file is written atomically (temp file, fsync, rename,
   fsync directory) and serves as the commit marker.
-- Any change or failed check builds a new venv from scratch in a separate build
-  directory (`.<name>.builds/<id>`), then atomically switches the venv path (a symlink)
-  to it. Applications see the old venv or the new one, never a partial one, and a failed
-  build leaves the previous venv active. A failed build is retried once with
-  `--no-cache-dir`, in case a cached wheel is corrupted.
+- Any change or failed check rebuilds the venv from scratch. A failed build is retried
+  once with `--no-cache-dir`, in case a cached wheel is corrupted.
+- New `atomic` parameter. `false` (default) rebuilds in place: one venv on disk.
+  `true` builds the new venv next to the active one (`.<name>.builds/<id>`) and
+  atomically switches the venv path (a symlink) to it: applications see the old venv or
+  the new one, never a partial one, and a failed build leaves the previous venv active,
+  at the cost of disk space for two venvs during a rebuild.
 - The interpreter (version and real path) and `system_site_packages` are recorded;
   a change triggers a rebuild.
 - Venvs created by 0.1.0 with matching requirements are adopted without reinstalling
@@ -49,10 +51,9 @@ or disk corruption going undetected.
 - All requirements files are installed with a single `pip install -r ... -r ...`, so
   one resolver sees every requirement. Conflicting pins across files now fail instead
   of the last file winning.
-- The venv path becomes a symlink to the active build. Venvs created by 0.1.0 are kept
-  in place until their first rebuild, which replaces the directory with the symlink.
-  Applications must use the venv path, not a build directory.
-- A rebuild needs disk space for two venvs; old builds are deleted after the switch.
+- With the default `atomic => false`, a rebuild deletes the venv first: it is unusable
+  during the rebuild, and stays unusable (reported as failed) if the rebuild fails, e.g.
+  without network.
 - Each Puppet run executes the venv's Python once to verify the venv (instead of
   `pip freeze`).
 

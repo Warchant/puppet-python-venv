@@ -13,12 +13,14 @@ Puppet::Type.type(:python_venv).provide(:pip) do
     Correctness model:
     * The venv is "done" only when the commit marker (.requirements_state) exists,
       matches the declared inputs, and verification passes.
-    * The path is a symlink to a build in .<name>.builds/. Any change or failed check
-      builds a new venv there: requirements are installed, data is flushed to disk,
-      every installed file is verified against its RECORD sha256, the marker is
-      written atomically, and only then the symlink is switched with one rename.
-      Applications see the old venv or the new one, never a partial one; a failed
-      build leaves the old venv in place.
+    * Any change or failed check builds a new venv from scratch: requirements are
+      installed, data is flushed to disk, every installed file is verified against its
+      RECORD sha256, and only then the marker is written atomically.
+    * atomic => false (default): the venv is deleted (marker first) and built in place.
+    * atomic => true: the path is a symlink to a build in .<name>.builds/; the new venv
+      is built there and the symlink is switched with one rename once it is committed.
+      Applications see the old venv or the new one, never a partial one; a failed build
+      leaves the old venv in place.
     * Every check fails closed: an error while checking is treated as "out of sync".
   DESC
 
@@ -392,36 +394,42 @@ sys.exit(0 if result['ok'] else 1)
     true
   end
 
-  # Build a new venv next to the active one and switch to it atomically. The active
-  # venv is never modified: if the build fails, it stays in place and the run fails.
-  # A failed first attempt is retried once without the pip cache, in case a cached
-  # wheel is corrupted.
+  # Build a new venv from scratch. A failed first attempt is retried once without the
+  # pip cache, in case a cached wheel is corrupted.
+  # * atomic => true: build next to the active venv and switch the symlink to it; the
+  #   active venv is never modified, and stays in place if the build fails.
+  # * atomic => false: delete the venv and build in place (one venv on disk); if the
+  #   build fails, there is no venv until a later run succeeds.
   def rebuild(reason)
     # Computed before anything is touched, so invalid inputs never affect the venv
     expected = calculate_expected_state
     base_python = resolved_base_python
 
-    Puppet.notice("Python venv #{venv_path}: building a new venv (#{reason})")
-    remove_stale_builds
-    build_dir = build_with_retry(expected, base_python)
-
-    switch_to(build_dir)
+    if resource[:atomic]
+      Puppet.notice("Python venv #{venv_path}: building a new venv next to the active one (#{reason})")
+      remove_stale_builds
+      dir = build_with_retry(expected, base_python) { new_build_dir(expected) }
+      switch_to(dir)
+      remove_stale_builds
+    else
+      Puppet.notice("Python venv #{venv_path}: rebuilding in place (#{reason})")
+      dir = build_with_retry(expected, base_python) { clear_venv_path }
+      remove_old_builds_dir
+    end
     @out_of_sync_reason = nil
-    Puppet.info("Python venv #{venv_path}: switched to #{build_dir} (built, flushed to disk and verified)")
-    remove_stale_builds
+    Puppet.info("Python venv #{venv_path}: #{dir} built, flushed to disk and verified")
   end
 
+  # The block returns the directory to build in
   def build_with_retry(expected, base_python)
-    build(expected, base_python, use_cache: true)
+    build(yield, expected, base_python, use_cache: true)
   rescue Puppet::Error => e
     Puppet.warning("Python venv #{venv_path}: build failed (#{e.message}); retrying without pip cache")
-    build(expected, base_python, use_cache: false)
+    build(yield, expected, base_python, use_cache: false)
   end
 
-  # Build and commit a complete venv in a new build directory; returns its path.
-  # The build directory is removed if anything fails.
-  def build(expected, base_python, use_cache:)
-    dir = new_build_dir(expected)
+  # Build and commit a complete venv in dir; returns dir. dir is removed if anything fails.
+  def build(dir, expected, base_python, use_cache:)
     @build_dir = dir
 
     create_venv
@@ -435,13 +443,32 @@ sys.exit(0 if result['ok'] else 1)
     dir
   rescue StandardError
     begin
-      remove_path(dir) if dir
+      remove_path(dir)
     rescue StandardError => e
       Puppet.warning("Python venv #{venv_path}: could not remove failed build #{dir}: #{e.message}")
     end
     raise
   ensure
     @build_dir = nil
+  end
+
+  # For an in-place rebuild: remove the commit marker durably, then everything at
+  # venv_path (a directory, or a symlink left by atomic => true). Returns venv_path.
+  def clear_venv_path
+    marker = File.join(venv_path, '.requirements_state')
+    if File.exist?(marker)
+      File.delete(marker)
+      fsync_dir(File.dirname(marker))
+    end
+    remove_path(venv_path)
+    venv_path
+  end
+
+  # Builds left over from atomic => true are not needed after an in-place rebuild
+  def remove_old_builds_dir
+    remove_path(builds_dir)
+  rescue StandardError => e
+    Puppet.warning("Python venv #{venv_path}: could not remove #{builds_dir}: #{e.message}")
   end
 
   # A unique, not yet existing build directory (unique so that a corrupted active
