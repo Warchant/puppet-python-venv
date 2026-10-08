@@ -161,6 +161,30 @@ Puppet::Type.newtype(:python_venv) do
     end
   end
 
+  newparam(:combined) do
+    desc <<-DESC
+      How `requirements_files` and `requirements` are installed.
+      * `true` (default): one `pip install` with all files, so one resolver sees all
+        requirements. If one file has `--hash` options, pip requires a hash for every
+        requirement in every file.
+      * `false`: one `pip install` for each file, in order, then one for `requirements`.
+        Use it to combine hash-pinned files with files that have no hashes. Each
+        install sees only its own file, so a later file can change versions that an
+        earlier file installed.
+      Changing it takes effect at the next rebuild.
+    DESC
+
+    newvalues(:true, :false, true, false)
+    defaultto :true
+
+    munge do |value|
+      case value
+      when :false, 'false', false then false
+      else true
+      end
+    end
+  end
+
   # Property to track whether the venv is committed and verified.
   # Syncing it rebuilds the venv; if that fails the change is reported as failed.
   newproperty(:requirements_state) do

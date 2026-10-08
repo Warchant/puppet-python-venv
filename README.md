@@ -98,6 +98,10 @@ In practice, your manifest is the source of truth for the venv content.
 - `atomic`: `false` (default) rebuilds in place; `true` builds next to the active venv and
   switches atomically (needs space for two venvs).
   See [What "deterministic state" means here](#what-deterministic-state-means-here).
+- `combined`: `true` (default) installs all `requirements_files` and
+  `requirements` with one `pip install`, so one resolver sees all of them. `false` runs
+  one `pip install` for each file, in order, then one for `requirements`.
+  See [Hash-pinned requirements files](#hash-pinned-requirements-files).
 
 > Note: `requirements_state` is an internal property used by the provider. Do not set it manually.
 
@@ -140,7 +144,32 @@ python_venv { '/opt/apps/myapp/.venv':
 }
 ```
 
-### 4) Remove a venv
+### 4) Hash-pinned requirements files
+
+If one requirements file has `--hash` options, pip turns on `--require-hashes` for the
+whole `pip install` call. With the default `combined => true`, all files go into
+one call, so every requirement in every file must have a hash. Otherwise pip fails with
+`Hashes are required in --require-hashes mode, but they are missing from some requirements`.
+
+To combine a hash-pinned lock file with files or `requirements` that have no hashes,
+install each file with its own `pip install`:
+
+```puppet
+python_venv { '/opt/apps/myapp/.venv':
+  ensure             => present,
+  requirements_files => [
+    '/opt/apps/myapp/requirements.lock',  # every line has --hash
+    '/opt/apps/myapp/plugins.txt',        # no hashes
+  ],
+  combined           => false,
+}
+```
+
+With `combined => false`, each install sees only its own file. A later file can
+change versions that an earlier file installed. Changing `combined` takes effect
+at the next rebuild.
+
+### 5) Remove a venv
 
 ```puppet
 python_venv { '/opt/apps/myapp/.venv':

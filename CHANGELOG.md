@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## Release 0.1.2
+
+**Features**
+
+- New `combined` parameter. `true` (default) installs all `requirements_files` and
+  `requirements` with one `pip install`, as in 0.1.1. `false` runs one `pip install`
+  for each requirements file, in order, then one for `requirements`, as in 0.1.0.
+
+**Bugfixes**
+
+- A hash-pinned requirements file combined with files or `requirements` without hashes
+  failed with `Hashes are required in --require-hashes mode`: pip turns on
+  `--require-hashes` for the whole `pip install` call. Set `combined => false` to
+  install each file with its own `pip install`.
+
 ## Release 0.1.1
 
 Guarantees that a `python_venv` reported as in sync is fully installed, flushed to

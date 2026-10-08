@@ -1,6 +1,6 @@
 {
   "name": "warchantua-puppetvenv",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "warchant",
   "summary": "Manage Python virtual environments with verified, durable dependency installs",
   "license": "Apache-2.0",

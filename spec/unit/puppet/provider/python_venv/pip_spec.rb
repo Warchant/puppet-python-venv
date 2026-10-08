@@ -316,6 +316,29 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       expect(Dir.glob(File.join(tmpdir, '.venv.link*'))).to be_empty
     end
 
+    context 'with combined => false' do
+      let(:resource_params) { super().merge(combined: false) }
+
+      it 'installs each requirements file with its own pip invocation, in order' do
+        provider.create
+        build = File.join(builds, build_dirs.first)
+        pip = File.join(build, 'bin', 'pip')
+        mirror = ['--index-url', 'https://mirror.example/simple']
+        installs = commands.select { |c| c[1] == 'install' && c.include?('-r') }
+        expect(installs).to eq([
+                                 [pip, 'install', '-r', req_file, *mirror],
+                                 [pip, 'install', '-r', File.join(build, '.individual_requirements.txt'), *mirror],
+                               ])
+      end
+
+      it 'stops at the first failed install' do
+        stub_execute(fail_on: ->(cmd) { cmd.include?(req_file) })
+        expect { provider.create }.to raise_error(Puppet::Error, %r{Failed to install requirements})
+        installs = commands.select { |c| c[1] == 'install' && c.include?('-r') }
+        expect(installs.map { |c| c[3] }.uniq).to eq([req_file])
+      end
+    end
+
     it 'commits the build before switching to it' do
       marker_at_switch = nil
       allow(File).to receive(:rename).and_wrap_original do |m, from, to|

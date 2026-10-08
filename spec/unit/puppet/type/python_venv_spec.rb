@@ -84,6 +84,22 @@ describe Puppet::Type.type(:python_venv) do
       end
     end
 
+    context 'combined parameter' do
+      it 'defaults to true' do
+        expect(type.new(path: '/opt/venv')[:combined]).to be true
+      end
+
+      [false, 'false', :false].each do |value|
+        it "accepts #{value.inspect} as false" do
+          expect(type.new(path: '/opt/venv', combined: value)[:combined]).to be false
+        end
+      end
+
+      it 'rejects other values' do
+        expect { type.new(path: '/opt/venv', combined: 'no') }.to raise_error(Puppet::ResourceError)
+      end
+    end
+
     context 'system_site_packages parameter' do
       it 'accepts true' do
         expect { type.new(path: '/opt/venv', system_site_packages: true) }.not_to raise_error
