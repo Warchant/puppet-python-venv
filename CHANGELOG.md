@@ -24,7 +24,7 @@ or disk corruption going undetected.
   atomically switches the venv path (a symlink) to it: applications see the old venv or
   the new one, never a partial one, and a failed build leaves the previous venv active,
   at the cost of disk space for two venvs during a rebuild.
-- New `resolve_together` parameter. `true` (default) installs all requirements with one
+- New `combined` parameter. `true` (default) installs all requirements with one
   `pip install`. `false` runs one `pip install` for each requirements file, in order,
   then one for `requirements`. Use it to combine hash-pinned files with files that
   have no hashes.
@@ -55,7 +55,7 @@ or disk corruption going undetected.
 - All requirements files are installed with a single `pip install -r ... -r ...`, so
   one resolver sees every requirement. Conflicting pins across files now fail instead
   of the last file winning. If one file has `--hash` options, pip requires hashes in
-  all files. Set `resolve_together => false` to get the 0.1.0 behavior (one
+  all files. Set `combined => false` to get the 0.1.0 behavior (one
   `pip install` for each file).
 - With the default `atomic => false`, a rebuild deletes the venv first: it is unusable
   during the rebuild, and stays unusable (reported as failed) if the rebuild fails, e.g.

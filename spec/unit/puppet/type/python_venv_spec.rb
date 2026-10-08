@@ -84,19 +84,19 @@ describe Puppet::Type.type(:python_venv) do
       end
     end
 
-    context 'resolve_together parameter' do
+    context 'combined parameter' do
       it 'defaults to true' do
-        expect(type.new(path: '/opt/venv')[:resolve_together]).to be true
+        expect(type.new(path: '/opt/venv')[:combined]).to be true
       end
 
       [false, 'false', :false].each do |value|
         it "accepts #{value.inspect} as false" do
-          expect(type.new(path: '/opt/venv', resolve_together: value)[:resolve_together]).to be false
+          expect(type.new(path: '/opt/venv', combined: value)[:combined]).to be false
         end
       end
 
       it 'rejects other values' do
-        expect { type.new(path: '/opt/venv', resolve_together: 'no') }.to raise_error(Puppet::ResourceError)
+        expect { type.new(path: '/opt/venv', combined: 'no') }.to raise_error(Puppet::ResourceError)
       end
     end
 

@@ -70,7 +70,7 @@ The following parameters are available in the `python_venv` type.
 * [`python_executable`](#-python_venv--python_executable)
 * [`requirements`](#-python_venv--requirements)
 * [`requirements_files`](#-python_venv--requirements_files)
-* [`resolve_together`](#-python_venv--resolve_together)
+* [`combined`](#-python_venv--combined)
 * [`system_site_packages`](#-python_venv--system_site_packages)
 * [`verify`](#-python_venv--verify)
 
@@ -123,7 +123,7 @@ Array of paths to requirements.txt files to install.
 
 Default value: `[]`
 
-##### <a name="-python_venv--resolve_together"></a>`resolve_together`
+##### <a name="-python_venv--combined"></a>`combined`
 
 Valid values: `true`, `false`, `true`, `false`
 

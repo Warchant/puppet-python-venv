@@ -161,7 +161,7 @@ Puppet::Type.newtype(:python_venv) do
     end
   end
 
-  newparam(:resolve_together) do
+  newparam(:combined) do
     desc <<-DESC
       How `requirements_files` and `requirements` are installed.
       * `true` (default): one `pip install` with all files, so one resolver sees all

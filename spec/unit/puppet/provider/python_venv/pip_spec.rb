@@ -316,8 +316,8 @@ describe Puppet::Type.type(:python_venv).provider(:pip) do
       expect(Dir.glob(File.join(tmpdir, '.venv.link*'))).to be_empty
     end
 
-    context 'with resolve_together => false' do
-      let(:resource_params) { super().merge(resolve_together: false) }
+    context 'with combined => false' do
+      let(:resource_params) { super().merge(combined: false) }
 
       it 'installs each requirements file with its own pip invocation, in order' do
         provider.create

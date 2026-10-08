@@ -98,7 +98,7 @@ In practice, your manifest is the source of truth for the venv content.
 - `atomic`: `false` (default) rebuilds in place; `true` builds next to the active venv and
   switches atomically (needs space for two venvs).
   See [What "deterministic state" means here](#what-deterministic-state-means-here).
-- `resolve_together`: `true` (default) installs all `requirements_files` and
+- `combined`: `true` (default) installs all `requirements_files` and
   `requirements` with one `pip install`, so one resolver sees all of them. `false` runs
   one `pip install` for each file, in order, then one for `requirements`.
   See [Hash-pinned requirements files](#hash-pinned-requirements-files).
@@ -147,7 +147,7 @@ python_venv { '/opt/apps/myapp/.venv':
 ### 4) Hash-pinned requirements files
 
 If one requirements file has `--hash` options, pip turns on `--require-hashes` for the
-whole `pip install` call. With the default `resolve_together => true`, all files go into
+whole `pip install` call. With the default `combined => true`, all files go into
 one call, so every requirement in every file must have a hash. Otherwise pip fails with
 `Hashes are required in --require-hashes mode, but they are missing from some requirements`.
 
@@ -161,12 +161,12 @@ python_venv { '/opt/apps/myapp/.venv':
     '/opt/apps/myapp/requirements.lock',  # every line has --hash
     '/opt/apps/myapp/plugins.txt',        # no hashes
   ],
-  resolve_together   => false,
+  combined           => false,
 }
 ```
 
-With `resolve_together => false`, each install sees only its own file. A later file can
-change versions that an earlier file installed. Changing `resolve_together` takes effect
+With `combined => false`, each install sees only its own file. A later file can
+change versions that an earlier file installed. Changing `combined` takes effect
 at the next rebuild.
 
 ### 5) Remove a venv
