@@ -566,7 +566,9 @@ sys.exit(0 if result['ok'] else 1)
     end
   end
 
-  # Install all requirements with one pip invocation, so a single resolver sees all of them
+  # Install all requirements. With resolve_together (default) one pip invocation gets all
+  # files, so a single resolver sees all of them; otherwise each file gets its own
+  # invocation, in order, so `--hash` lines in one file do not require hashes in the others.
   def install_all_requirements(use_cache)
     files_to_install = resource[:requirements_files].dup
 
@@ -575,8 +577,16 @@ sys.exit(0 if result['ok'] else 1)
       files_to_install << individual_requirements_file
     end
 
+    if resource[:resolve_together]
+      pip_install_requirements(files_to_install, use_cache)
+    else
+      files_to_install.each { |f| pip_install_requirements([f], use_cache) }
+    end
+  end
+
+  def pip_install_requirements(files, use_cache)
     cmd = [pip_path, 'install']
-    files_to_install.each { |f| cmd << '-r' << f }
+    files.each { |f| cmd << '-r' << f }
     cmd += resource[:pip_args]
     cmd << '--no-cache-dir' unless use_cache || cmd.include?('--no-cache-dir')
 

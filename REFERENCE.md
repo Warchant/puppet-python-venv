@@ -70,6 +70,7 @@ The following parameters are available in the `python_venv` type.
 * [`python_executable`](#-python_venv--python_executable)
 * [`requirements`](#-python_venv--requirements)
 * [`requirements_files`](#-python_venv--requirements_files)
+* [`resolve_together`](#-python_venv--resolve_together)
 * [`system_site_packages`](#-python_venv--system_site_packages)
 * [`verify`](#-python_venv--verify)
 
@@ -121,6 +122,22 @@ Default value: `[]`
 Array of paths to requirements.txt files to install.
 
 Default value: `[]`
+
+##### <a name="-python_venv--resolve_together"></a>`resolve_together`
+
+Valid values: `true`, `false`, `true`, `false`
+
+How `requirements_files` and `requirements` are installed.
+* `true` (default): one `pip install` with all files, so one resolver sees all
+  requirements. If one file has `--hash` options, pip requires a hash for every
+  requirement in every file.
+* `false`: one `pip install` for each file, in order, then one for `requirements`.
+  Use it to combine hash-pinned files with files that have no hashes. Each
+  install sees only its own file, so a later file can change versions that an
+  earlier file installed.
+Changing it takes effect at the next rebuild.
+
+Default value: `true`
 
 ##### <a name="-python_venv--system_site_packages"></a>`system_site_packages`
 
