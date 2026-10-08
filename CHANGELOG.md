@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## Release 0.1.3
+
+**Bugfixes**
+
+- Verification after install always failed for a wheel that ships a `.pyc` file, for
+  example numpy 1.26.4 (`numpy/distutils/__pycache__/conv_template.cpython-310.pyc`):
+  `size 8281, expected 8269`. pip compiles the `.pyc` again after it unpacks the wheel,
+  so the file never matches the wheel's `RECORD` row. The retry without the pip cache
+  failed the same way, and the venv was never built. The verifier now checks only that
+  a `.pyc` file exists. pip records the `.pyc` files that it compiles without hash and
+  size, so this check was already presence-only for all other `.pyc` files.
+
 ## Release 0.1.2
 
 **Features**

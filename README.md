@@ -76,7 +76,9 @@ the venv is checked according to `verify`:
 
 Packages installed, removed or changed outside Puppet are detected with `size` and `hash`.
 
-> Bytecode created at runtime (`__pycache__` files not listed in `RECORD`) is not verified.
+> Bytecode (`.pyc`) files are checked only for existence. pip records the `.pyc` files that it
+> compiles without hash and size, and Python can write them again at any time.
+> Bytecode created at runtime (not listed in `RECORD`) is not checked.
 > Use the venv path, not a build directory: builds are deleted when replaced.
 
 In practice, your manifest is the source of truth for the venv content.

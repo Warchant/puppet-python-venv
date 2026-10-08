@@ -102,6 +102,11 @@ def main():
                 if not stat.S_ISREG(st.st_mode):
                     err('%s: not a regular file' % target)
                     continue
+                # pip compiles .pyc files after unpacking and records them without hash and
+                # size. A .pyc shipped in the wheel (numpy 1.26.4) keeps its wheel row, but pip
+                # compiles it again, so its content never matches that row.
+                if rel.endswith('.pyc'):
+                    continue
                 if size and int(size) != st.st_size:
                     err('%s: size %d, expected %s' % (target, st.st_size, size))
                     continue

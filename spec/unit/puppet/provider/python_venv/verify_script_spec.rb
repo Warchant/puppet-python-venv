@@ -179,6 +179,21 @@ describe 'python_venv pip provider VERIFY_SCRIPT' do
       expect_ok(verify('hash'))
     end
 
+    # numpy 1.26.4 ships conv_template.cpython-310.pyc; pip compiles it again and adds a row
+    it 'checks only existence for a .pyc shipped in the wheel and compiled again by pip' do
+      shipped = 'old bytecode'
+      add_dist('pkg', '1.0', {}, record: "pkg/x.pyc,,\npkg/x.pyc,#{record_hash(shipped)},#{shipped.bytesize}\n")
+      FileUtils.mkdir_p(File.join(site_packages, 'pkg'))
+      File.write(File.join(site_packages, 'pkg', 'x.pyc'), 'new bytecode, other size')
+      expect_ok(verify('size'))
+      expect_ok(verify('hash'))
+    end
+
+    it 'detects a missing .pyc' do
+      add_dist('pkg', '1.0', {}, record: "pkg/x.pyc,,\n")
+      expect_failure(verify('size'), %r{x\.pyc: missing})
+    end
+
     it 'checks the size when only the hash is missing' do
       add_dist('pkg', '1.0', {}, record: "pkg/x.py,,5\n")
       FileUtils.mkdir_p(File.join(site_packages, 'pkg'))
